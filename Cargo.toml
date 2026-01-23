@@ -1,0 +1,20 @@
+[package]
+name = "spill_ring"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+description = "A no_std ring buffer that spills overflow to a configurable sink"
+repository = "https://github.com/GregBowyer/spill_ring"
+keywords = ["ring-buffer", "no_std", "embedded", "sink"]
+categories = ["data-structures", "no-std", "embedded"]
+readme = "README.md"
+
+[features]
+default = []
+# Use Cell instead of atomics for single-context embedded systems
+no-atomics = []
+
+[dependencies]
+
+[dev-dependencies]
