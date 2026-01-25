@@ -1,5 +1,7 @@
 //! Tests for byte serialization.
 
+use core::{f32, f64};
+
 use super::*;
 
 #[test]
@@ -96,7 +98,7 @@ fn test_u128() {
 #[test]
 fn test_f32() {
     let mut buf = [0u8; 4];
-    let value = 3.14159f32;
+    let value = f32::consts::PI;
 
     value.to_bytes(&mut buf).unwrap();
     let (v, _) = f32::from_bytes(&buf).unwrap();
@@ -106,7 +108,7 @@ fn test_f32() {
 #[test]
 fn test_f64() {
     let mut buf = [0u8; 8];
-    let value = 3.141592653589793f64;
+    let value = f64::consts::PI;
 
     value.to_bytes(&mut buf).unwrap();
     let (v, _) = f64::from_bytes(&buf).unwrap();

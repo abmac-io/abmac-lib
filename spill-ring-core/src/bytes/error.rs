@@ -1,9 +1,13 @@
 //! Error types for byte serialization.
 
+use snafu::Snafu;
+
 /// Error during byte serialization or deserialization.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Snafu)]
+#[snafu(visibility(pub))]
 pub enum BytesError {
     /// Buffer too small for serialization.
+    #[snafu(display("buffer too small: needed {needed} bytes, only {available} available"))]
     BufferTooSmall {
         /// Bytes needed.
         needed: usize,
@@ -12,12 +16,14 @@ pub enum BytesError {
     },
 
     /// Invalid data during deserialization.
+    #[snafu(display("invalid data: {message}"))]
     InvalidData {
         /// Error description.
         message: &'static str,
     },
 
     /// Unexpected end of input.
+    #[snafu(display("unexpected end of input: needed {needed} bytes, only {available} available"))]
     UnexpectedEof {
         /// Bytes needed.
         needed: usize,
@@ -26,37 +32,11 @@ pub enum BytesError {
     },
 
     /// Custom error for user implementations.
+    #[snafu(display("{message}"))]
     Custom {
         /// Error description.
         message: &'static str,
     },
-}
-
-impl core::fmt::Display for BytesError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            BytesError::BufferTooSmall { needed, available } => {
-                write!(
-                    f,
-                    "buffer too small: needed {} bytes, only {} available",
-                    needed, available
-                )
-            }
-            BytesError::InvalidData { message } => {
-                write!(f, "invalid data: {}", message)
-            }
-            BytesError::UnexpectedEof { needed, available } => {
-                write!(
-                    f,
-                    "unexpected end of input: needed {} bytes, only {} available",
-                    needed, available
-                )
-            }
-            BytesError::Custom { message } => {
-                write!(f, "{}", message)
-            }
-        }
-    }
 }
 
 /// Result type for bytes operations.

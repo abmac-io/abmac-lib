@@ -1,13 +1,13 @@
 //! Ring buffer with overflow spilling to a sink.
 
-use crate::index::{Index, SinkCell};
-use crate::iter::{SpillRingIter, SpillRingIterMut};
-use crate::sink::{DropSink, Sink};
-use crate::traits::{RingConsumer, RingProducer};
+use core::{cell::UnsafeCell, mem::MaybeUninit};
 
-use core::cell::UnsafeCell;
-use core::mem::MaybeUninit;
-
+use crate::{
+    index::{Index, SinkCell},
+    iter::{SpillRingIter, SpillRingIterMut},
+    sink::{DropSink, Sink},
+    traits::{RingConsumer, RingProducer},
+};
 /// Ring buffer that spills evicted items to a sink.
 pub struct SpillRing<T, const N: usize, S: Sink<T> = DropSink> {
     pub(crate) buffer: [UnsafeCell<MaybeUninit<T>>; N],

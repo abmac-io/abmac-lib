@@ -10,5 +10,6 @@ default = []
 no-atomics = []
 
 [dependencies]
+snafu = { version = "0.8", default-features = false, features = ["rust_1_81"] }
 
 [dev-dependencies]

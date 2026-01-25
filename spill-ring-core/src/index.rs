@@ -4,8 +4,10 @@
 
 #[cfg(not(feature = "no-atomics"))]
 mod atomic {
-    use core::cell::UnsafeCell;
-    use core::sync::atomic::{AtomicUsize, Ordering};
+    use core::{
+        cell::UnsafeCell,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
 
     /// Atomic index using Acquire/Release ordering.
     #[repr(transparent)]
@@ -70,7 +72,7 @@ mod atomic {
 
 #[cfg(feature = "no-atomics")]
 mod non_atomic {
-    use core::cell::Cell;
+    use core::cell::{Cell, UnsafeCell};
 
     /// Non-atomic index for single-context use.
     #[repr(transparent)]
@@ -100,12 +102,12 @@ mod non_atomic {
 
     /// Interior mutable cell for sink.
     #[repr(transparent)]
-    pub struct SinkCell<S>(core::cell::UnsafeCell<S>);
+    pub struct SinkCell<S>(UnsafeCell<S>);
 
     impl<S> SinkCell<S> {
         #[inline]
         pub const fn new(sink: S) -> Self {
-            Self(core::cell::UnsafeCell::new(sink))
+            Self(UnsafeCell::new(sink))
         }
 
         /// # Safety
