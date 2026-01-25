@@ -33,7 +33,7 @@ impl<'a, T, const N: usize, S: Sink<T>> Iterator for SpillRingIter<'a, T, N, S> 
         self.pos += 1;
         Some(unsafe {
             let slot = &self.ring.buffer[idx];
-            (*slot.get()).assume_init_ref()
+            (*slot.data.get()).assume_init_ref()
         })
     }
 
@@ -90,7 +90,7 @@ impl<'a, T, const N: usize, S: Sink<T>> Iterator for SpillRingIterMut<'a, T, N, 
         self.pos += 1;
         Some(unsafe {
             let slot = &self.ring.buffer[idx];
-            &mut *(*slot.get()).as_mut_ptr()
+            &mut *(*slot.data.get()).as_mut_ptr()
         })
     }
 

@@ -36,6 +36,14 @@ mod atomic {
         pub fn store(&self, val: usize) {
             self.0.store(val, Ordering::Release);
         }
+
+        /// Compare and exchange with AcqRel/Acquire ordering.
+        /// Returns Ok(current) on success, Err(actual) on failure.
+        #[inline]
+        pub fn compare_exchange(&self, current: usize, new: usize) -> Result<usize, usize> {
+            self.0
+                .compare_exchange(current, new, Ordering::AcqRel, Ordering::Acquire)
+        }
     }
 
     /// Interior mutable cell for sink.
