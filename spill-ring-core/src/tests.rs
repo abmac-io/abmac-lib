@@ -429,7 +429,7 @@ fn default_creates_empty_ring() {
 }
 
 // Test trait implementations
-use crate::traits::{RingConsumer, RingProducer};
+use crate::traits::{RingConsumer, RingInfo, RingProducer};
 
 #[test]
 fn ring_producer_trait() {
@@ -442,15 +442,15 @@ fn ring_producer_trait() {
     assert!(RingProducer::try_push(&mut ring, 4).is_ok());
 
     // is_full
-    assert!(RingProducer::is_full(&ring));
+    assert!(RingInfo::is_full(&ring));
 
     // try_push when full returns Err
     assert_eq!(RingProducer::try_push(&mut ring, 5), Err(5));
 
-    // capacity, len, is_empty
-    assert_eq!(RingProducer::capacity(&ring), 4);
-    assert_eq!(RingProducer::len(&ring), 4);
-    assert!(!RingProducer::is_empty(&ring));
+    // capacity, len, is_empty (from RingInfo)
+    assert_eq!(RingInfo::capacity(&ring), 4);
+    assert_eq!(RingInfo::len(&ring), 4);
+    assert!(!RingInfo::is_empty(&ring));
 }
 
 #[test]
@@ -467,10 +467,10 @@ fn ring_consumer_trait() {
     assert_eq!(RingConsumer::try_pop(&mut ring), Some(20));
     assert_eq!(RingConsumer::try_pop(&mut ring), None);
 
-    // is_empty, len, capacity
-    assert!(RingConsumer::is_empty(&ring));
-    assert_eq!(RingConsumer::len(&ring), 0);
-    assert_eq!(RingConsumer::capacity(&ring), 4);
+    // is_empty, len, capacity (from RingInfo)
+    assert!(RingInfo::is_empty(&ring));
+    assert_eq!(RingInfo::len(&ring), 0);
+    assert_eq!(RingInfo::capacity(&ring), 4);
 }
 
 #[test]
