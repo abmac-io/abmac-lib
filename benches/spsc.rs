@@ -2,8 +2,7 @@
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use spill_ring::SpillRing;
-use std::sync::Arc;
-use std::thread;
+use std::{sync::Arc, thread};
 
 /// Benchmark SPSC throughput with varying buffer sizes.
 fn spsc_throughput(c: &mut Criterion) {

@@ -1,23 +1,8 @@
-use crate::{DropSink, FnSink, Sink, SpillRing, sink};
-
 extern crate std;
+
 use std::{vec, vec::Vec};
 
-struct CollectSink<T> {
-    items: Vec<T>,
-}
-
-impl<T> CollectSink<T> {
-    fn new() -> Self {
-        Self { items: Vec::new() }
-    }
-}
-
-impl<T> Sink<T> for CollectSink<T> {
-    fn send(&mut self, item: T) {
-        self.items.push(item);
-    }
-}
+use crate::{CollectSink, DropSink, FnSink, Sink, SpillRing, sink};
 
 #[test]
 fn new_ring_is_empty() {
@@ -53,13 +38,13 @@ fn eviction_to_sink() {
     ring.push(2);
     ring.push(3);
     ring.push(4);
-    assert!(ring.sink().items.is_empty()); // Nothing evicted yet
+    assert!(ring.sink().items().is_empty()); // Nothing evicted yet
 
     ring.push(5); // Evicts 1 directly to sink
-    assert_eq!(ring.sink().items, vec![1]);
+    assert_eq!(ring.sink().items(), vec![1]);
 
     ring.push(6); // Evicts 2 directly to sink
-    assert_eq!(ring.sink().items, vec![1, 2]);
+    assert_eq!(ring.sink().items(), vec![1, 2]);
 
     // Ring now contains [3, 4, 5, 6]
     assert_eq!(ring.pop(), Some(3));
@@ -81,13 +66,13 @@ fn flush_to_sink() {
     ring.push(6); // Evicts 2 directly to sink
 
     // Sink already has [1, 2] from direct eviction
-    assert_eq!(ring.sink().items, vec![1, 2]);
+    assert_eq!(ring.sink().items(), vec![1, 2]);
 
     // Flush remaining buffer items to sink
     let count = ring.flush();
     assert_eq!(count, 4); // 3, 4, 5, 6
     assert!(ring.is_empty());
-    assert_eq!(ring.sink().items, vec![1, 2, 3, 4, 5, 6]);
+    assert_eq!(ring.sink().items(), vec![1, 2, 3, 4, 5, 6]);
 }
 
 #[test]
@@ -147,7 +132,7 @@ fn flush_clears_buffer() {
     ring.flush();
 
     assert!(ring.is_empty());
-    assert_eq!(ring.sink().items, vec![1, 2, 3]);
+    assert_eq!(ring.sink().items(), vec![1, 2, 3]);
 }
 
 #[test]
@@ -260,19 +245,19 @@ fn overflow_sends_to_sink_immediately() {
     ring.push(1);
     ring.push(2);
     // Main buffer full: [1, 2]
-    assert!(ring.sink().items.is_empty());
+    assert!(ring.sink().items().is_empty());
 
     ring.push(3); // Evicts 1 directly to sink
-    assert_eq!(ring.sink().items, vec![1]);
+    assert_eq!(ring.sink().items(), vec![1]);
 
     ring.push(4); // Evicts 2 directly to sink
-    assert_eq!(ring.sink().items, vec![1, 2]);
+    assert_eq!(ring.sink().items(), vec![1, 2]);
 
     ring.push(5); // Evicts 3 directly to sink
-    assert_eq!(ring.sink().items, vec![1, 2, 3]);
+    assert_eq!(ring.sink().items(), vec![1, 2, 3]);
 
     ring.push(6); // Evicts 4 directly to sink
-    assert_eq!(ring.sink().items, vec![1, 2, 3, 4]);
+    assert_eq!(ring.sink().items(), vec![1, 2, 3, 4]);
 
     // Main buffer: [5, 6]
     assert_eq!(ring.pop(), Some(5));
@@ -316,13 +301,13 @@ fn push_and_flush() {
 
     ring.push_and_flush(1);
     assert!(ring.is_empty());
-    assert_eq!(ring.sink().items, vec![1]);
+    assert_eq!(ring.sink().items(), vec![1]);
 
     ring.push(2);
     ring.push(3);
     ring.push_and_flush(4);
     assert!(ring.is_empty());
-    assert_eq!(ring.sink().items, vec![1, 2, 3, 4]);
+    assert_eq!(ring.sink().items(), vec![1, 2, 3, 4]);
 }
 
 // Sink-specific tests (from modes-core/src/sinks/tests.rs)
@@ -354,7 +339,7 @@ fn collect_sink_gathers_items() {
     sink.send(10);
     sink.send(20);
     sink.send(30);
-    assert_eq!(sink.items, vec![10, 20, 30]);
+    assert_eq!(sink.items(), vec![10, 20, 30]);
 }
 
 #[test]
@@ -362,12 +347,12 @@ fn sink_with_different_types() {
     let mut string_sink = CollectSink::new();
     string_sink.send("hello");
     string_sink.send("world");
-    assert_eq!(string_sink.items, vec!["hello", "world"]);
+    assert_eq!(string_sink.items(), vec!["hello", "world"]);
 
     let mut tuple_sink = CollectSink::new();
     tuple_sink.send((1, "a"));
     tuple_sink.send((2, "b"));
-    assert_eq!(tuple_sink.items, vec![(1, "a"), (2, "b")]);
+    assert_eq!(tuple_sink.items(), vec![(1, "a"), (2, "b")]);
 }
 
 #[test]
@@ -433,7 +418,7 @@ fn clear_flushes_to_sink() {
     ring.clear();
 
     assert!(ring.is_empty());
-    assert_eq!(ring.sink().items, vec![1, 2, 3]);
+    assert_eq!(ring.sink().items(), vec![1, 2, 3]);
 }
 
 #[test]
@@ -547,6 +532,117 @@ fn extend_with_overflow_evicts() {
     // Only last 4 items remain (6, 7, 8, 9)
     assert_eq!(ring.len(), 4);
     assert_eq!(ring.pop(), Some(6));
+}
+
+#[cfg(feature = "std")]
+mod channel_sink_tests {
+    use crate::{ChannelSink, Sink, SpillRing};
+    use std::sync::mpsc;
+
+    #[test]
+    fn channel_sink_sends_evicted_items() {
+        let (tx, rx) = mpsc::channel();
+        let ring = SpillRing::<i32, 4, _>::with_sink(ChannelSink::new(tx));
+
+        // Fill ring
+        ring.push(1);
+        ring.push(2);
+        ring.push(3);
+        ring.push(4);
+
+        // No evictions yet
+        assert!(rx.try_recv().is_err());
+
+        // Trigger evictions
+        ring.push(5); // evicts 1
+        ring.push(6); // evicts 2
+
+        assert_eq!(rx.try_recv(), Ok(1));
+        assert_eq!(rx.try_recv(), Ok(2));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn channel_sink_with_flush() {
+        let (tx, rx) = mpsc::channel();
+        let mut ring = SpillRing::<i32, 4, _>::with_sink(ChannelSink::new(tx));
+
+        ring.push(10);
+        ring.push(20);
+        ring.push(30);
+
+        ring.flush();
+
+        let items: Vec<_> = rx.try_iter().collect();
+        assert_eq!(items, vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn channel_sink_drop_sends_remaining() {
+        let (tx, rx) = mpsc::channel();
+
+        {
+            let ring = SpillRing::<i32, 4, _>::with_sink(ChannelSink::new(tx));
+            ring.push(1);
+            ring.push(2);
+            // Ring dropped here, flushes to sink
+        }
+
+        let items: Vec<_> = rx.try_iter().collect();
+        assert_eq!(items, vec![1, 2]);
+    }
+
+    #[test]
+    fn channel_sink_accessors() {
+        let (tx, rx) = mpsc::channel();
+        let sink = ChannelSink::new(tx);
+
+        // Test sender() accessor
+        sink.sender().send(42).unwrap();
+        assert_eq!(rx.recv(), Ok(42));
+
+        // Test into_sender()
+        let sender = sink.into_sender();
+        sender.send(99).unwrap();
+        assert_eq!(rx.recv(), Ok(99));
+    }
+
+    #[test]
+    fn channel_sink_ignores_disconnected_receiver() {
+        let (tx, rx) = mpsc::channel::<i32>();
+        let mut sink = ChannelSink::new(tx);
+
+        // Drop receiver
+        drop(rx);
+
+        // send should not panic
+        sink.send(1);
+        sink.send(2);
+    }
+
+    #[test]
+    fn channel_sink_mpsc_pattern() {
+        // Multiple rings sending to one receiver
+        let (tx, rx) = mpsc::channel();
+
+        let ring1 = SpillRing::<i32, 2, _>::with_sink(ChannelSink::new(tx.clone()));
+        let ring2 = SpillRing::<i32, 2, _>::with_sink(ChannelSink::new(tx.clone()));
+        drop(tx); // Drop original sender
+
+        // Fill and overflow both rings
+        ring1.push(10);
+        ring1.push(11);
+        ring1.push(12); // evicts 10
+
+        ring2.push(20);
+        ring2.push(21);
+        ring2.push(22); // evicts 20
+
+        // Both evictions should arrive at receiver
+        let mut evicted: Vec<_> = rx.try_iter().collect();
+        evicted.sort();
+        assert_eq!(evicted, vec![10, 20]);
+    }
 }
 
 // Concurrency tests (only run with atomics feature)
@@ -680,4 +776,198 @@ mod concurrency {
         producer.join().expect("producer panicked");
         consumer.join().expect("consumer panicked");
     }
+}
+
+// ProducerSink tests
+use crate::ProducerSink;
+
+#[test]
+fn producer_sink_assigns_unique_ids() {
+    let sink = ProducerSink::new(|_id| CollectSink::<i32>::new());
+
+    let sink0 = sink.clone();
+    let sink1 = sink.clone();
+    let sink2 = sink.clone();
+
+    assert_eq!(sink0.producer_id(), 0);
+    assert_eq!(sink1.producer_id(), 1);
+    assert_eq!(sink2.producer_id(), 2);
+}
+
+#[test]
+fn producer_sink_creates_independent_sinks() {
+    let sink = ProducerSink::new(|_id| CollectSink::<i32>::new());
+
+    let mut sink0 = sink.clone();
+    let mut sink1 = sink.clone();
+
+    sink0.send(1);
+    sink0.send(2);
+    sink1.send(10);
+
+    // Each has its own collected items
+    assert_eq!(sink0.inner().unwrap().items(), &[1, 2]);
+    assert_eq!(sink1.inner().unwrap().items(), &[10]);
+}
+
+#[test]
+fn producer_sink_lazy_init() {
+    let sink = ProducerSink::new(|_id| CollectSink::<i32>::new());
+
+    let sink0 = sink.clone();
+
+    // Inner not initialized until first send
+    assert!(sink0.inner().is_none());
+}
+
+#[test]
+fn producer_sink_flush_delegates() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static FLUSH_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    struct FlushCounter;
+    impl Sink<i32> for FlushCounter {
+        fn send(&mut self, _item: i32) {}
+        fn flush(&mut self) {
+            FLUSH_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    FLUSH_COUNT.store(0, Ordering::SeqCst);
+
+    let sink = ProducerSink::new(|_id| FlushCounter);
+    let mut sink0 = sink.clone();
+
+    // Flush before init is a no-op
+    sink0.flush();
+    assert_eq!(FLUSH_COUNT.load(Ordering::SeqCst), 0);
+
+    // Send initializes, then flush delegates
+    sink0.send(1);
+    sink0.flush();
+    assert_eq!(FLUSH_COUNT.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn producer_sink_into_inner() {
+    let sink = ProducerSink::new(|_id| CollectSink::<i32>::new());
+    let mut sink0 = sink.clone();
+
+    sink0.send(42);
+
+    let inner = sink0.into_inner().unwrap();
+    assert_eq!(inner.items(), &[42]);
+}
+
+#[test]
+fn producer_sink_with_mpsc_ring() {
+    use crate::MpscRing;
+
+    let sink = ProducerSink::new(|_id| CollectSink::<u64>::new());
+
+    let (producers, consumer) = MpscRing::<u64, 4, _>::with_sink(3, sink);
+
+    // Push enough to cause evictions
+    for (i, producer) in producers.into_iter().enumerate() {
+        for j in 0..10u64 {
+            producer.push(i as u64 * 100 + j);
+        }
+        // Can't easily collect back without threads, just drop
+    }
+
+    // Consumer should have empty rings (producers dropped)
+    assert_eq!(consumer.num_producers(), 0);
+}
+
+// Ring chaining tests (SpillRing as Sink)
+
+#[test]
+fn ring_chaining_basic() {
+    // ring1 overflows into ring2
+    let ring2: SpillRing<i32, 4> = SpillRing::new();
+    let ring1 = SpillRing::<i32, 2, _>::with_sink(ring2);
+
+    ring1.push(1);
+    ring1.push(2);
+    // ring1 full: [1, 2], ring2 empty
+
+    ring1.push(3); // evicts 1 to ring2
+    ring1.push(4); // evicts 2 to ring2
+    // ring1: [3, 4], ring2: [1, 2]
+
+    assert_eq!(ring1.pop(), Some(3));
+    assert_eq!(ring1.pop(), Some(4));
+
+    // Access ring2 via sink
+    assert_eq!(ring1.sink().pop(), Some(1));
+    assert_eq!(ring1.sink().pop(), Some(2));
+}
+
+#[test]
+fn ring_chaining_cascade_overflow() {
+    // ring1 -> ring2 -> CollectSink
+    // When ring2 also overflows, items go to final sink
+    let final_sink = CollectSink::new();
+    let ring2 = SpillRing::<i32, 2, _>::with_sink(final_sink);
+    let ring1 = SpillRing::<i32, 2, _>::with_sink(ring2);
+
+    // Push 6 items through ring1 (cap 2) -> ring2 (cap 2) -> final_sink
+    for i in 1..=6 {
+        ring1.push(i);
+    }
+
+    // ring1: [5, 6] (most recent)
+    // ring2: [3, 4] (evicted from ring1, overflow of 1,2 went to final_sink)
+    // final_sink: [1, 2]
+
+    assert_eq!(ring1.sink().sink().items(), vec![1, 2]);
+    assert_eq!(ring1.sink().pop(), Some(3));
+    assert_eq!(ring1.sink().pop(), Some(4));
+    assert_eq!(ring1.pop(), Some(5));
+    assert_eq!(ring1.pop(), Some(6));
+}
+
+#[test]
+fn ring_chaining_flush_cascades() {
+    let final_sink = CollectSink::new();
+    let ring2 = SpillRing::<i32, 4, _>::with_sink(final_sink);
+    let mut ring1 = SpillRing::<i32, 4, _>::with_sink(ring2);
+
+    ring1.push(1);
+    ring1.push(2);
+    ring1.push(3);
+
+    // Flush ring1 -> items go to ring2
+    ring1.flush();
+    assert!(ring1.is_empty());
+    assert_eq!(ring1.sink().len(), 3);
+
+    // Flush ring2 -> items go to final_sink
+    unsafe { ring1.sink_mut_unchecked() }.flush();
+    assert!(ring1.sink().is_empty());
+    assert_eq!(ring1.sink().sink().items(), vec![1, 2, 3]);
+}
+
+#[test]
+fn ring_chaining_drop_flushes_all() {
+    use std::sync::{Arc, Mutex};
+
+    let collected = Arc::new(Mutex::new(Vec::new()));
+    let collected_clone = collected.clone();
+
+    {
+        let final_sink = FnSink(move |x: i32| {
+            collected_clone.lock().unwrap().push(x);
+        });
+        let ring2 = SpillRing::<i32, 4, _>::with_sink(final_sink);
+        let ring1 = SpillRing::<i32, 4, _>::with_sink(ring2);
+
+        ring1.push(10);
+        ring1.push(20);
+        ring1.push(30);
+        // ring1 dropped here -> flushes to ring2 -> ring2 dropped -> flushes to final_sink
+    }
+
+    assert_eq!(*collected.lock().unwrap(), vec![10, 20, 30]);
 }

@@ -1,6 +1,6 @@
 //! A no_std ring buffer that spills overflow to a sink.
 
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 pub use spill_ring_core::*;
 
@@ -14,4 +14,7 @@ pub mod prelude {
         RingConsumer, RingProducer, RingTrait, Sink, SpillRing, SpillRingIter, SpillRingIterMut,
         ToBytes, ViewBytes, sink,
     };
+
+    #[cfg(feature = "std")]
+    pub use crate::ChannelSink;
 }

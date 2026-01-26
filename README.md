@@ -15,6 +15,7 @@ This pattern is useful when recent items need fast access but older items should
 - **Logging pipelines** - Buffer recent logs, flush older entries to disk
 - **Embedded systems** - Fixed memory footprint with `no_std` support
 - **SPSC queues** - Lock-free single-producer, single-consumer with overflow handling
+- **MPSC aggregation** - Multiple producers write independently, merge on demand
 
 ## What It Does
 
@@ -114,7 +115,45 @@ thread::spawn(move || {
 });
 ```
 
-For multiple producers or multiple consumers, wrap in a `Mutex`.
+For multiple producers, use `MpscRing` for zero-overhead multi-producer support.
+
+## Multiple Producers (MPSC)
+
+When order between producers doesn't matter, `MpscRing` provides zero-overhead multi-producer support. Each producer owns an independent ring running at full no-atomics speed with no contention:
+
+```rust
+use std::thread;
+use spill_ring::{MpscRing, collect_producers};
+
+// Create 4 producers and a consumer
+let (producers, mut consumer) = MpscRing::<u64, 1024>::new(4);
+
+// Each producer runs on its own thread at full speed
+let finished: Vec<_> = thread::scope(|s| {
+    producers
+        .into_iter()
+        .map(|producer| {
+            s.spawn(move || {
+                for i in 0..100_000 {
+                    producer.push(i);
+                }
+                producer // Return producer for collection
+            })
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|h| h.join().unwrap())
+        .collect()
+});
+
+// Merge producers back and drain all items
+collect_producers(finished, &mut consumer);
+for item in consumer.drain() {
+    // Process items (order across producers not guaranteed)
+}
+```
+
+ This pattern is ideal for large items where parallel cache loading outweighs coordination overhead.
 
 ## Performance
 
@@ -124,8 +163,8 @@ SpillRing has two modes with different performance characteristics.
 
 | Mode | Push Throughput | Use Case |
 |------|-----------------|----------|
-| Default (atomics) | 193 Melem/s | SPSC concurrent access |
-| `no-atomics` feature | 4.6 Gelem/s | Single-threaded |
+| Default (atomics) | 193 million elem/sec | SPSC concurrent access |
+| `no-atomics` feature | 4.6 billion elem/sec | Single-threaded |
 
 The default mode uses atomic operations and a seqlock for thread-safe SPSC access. This adds overhead compared to single-threaded use.
 
@@ -140,9 +179,9 @@ spill-ring = { version = "0.1", features = ["no-atomics"] }
 
 | Implementation | Push Throughput |
 |----------------|-----------------|
-| SpillRing (no-atomics) | 4.6 Gelem/s |
-| VecDeque (manual eviction) | 632 Melem/s |
-| SpillRing (atomics) | 193 Melem/s |
+| SpillRing (no-atomics) | 4.6 billion elem/sec |
+| VecDeque (manual eviction) | 632 million elem/sec |
+| SpillRing (atomics) | 193 million elem/sec |
 
 SpillRing's power-of-two capacity enables fast bitwise modulo, making the `no-atomics` version faster than `VecDeque` with equivalent eviction logic.
 
@@ -150,11 +189,49 @@ SpillRing's power-of-two capacity enables fast bitwise modulo, making the `no-at
 
 | Capacity | Throughput | Notes |
 |----------|------------|-------|
-| 16 | 192 Melem/s | Fits L1 cache |
-| 4096 | 177 Melem/s | L2 cache |
-| 65536 | 141 Melem/s | L3 cache |
+| 16 | 192 million elem/sec | Fits L1 cache |
+| 4096 | 177 million elem/sec | L2 cache |
+| 65536 | 141 million elem/sec | L3 cache |
 
 Run benchmarks locally: `cargo bench`
+
+## Ring Chaining
+
+Since `SpillRing` implements `Sink`, rings can chain together. Overflow from one ring flows into the next, creating tiered buffers:
+
+```rust
+use spill_ring::SpillRing;
+
+// Tier 2: larger buffer, overflows are dropped
+let l2: SpillRing<i32, 64> = SpillRing::new();
+
+// Tier 1: small hot buffer, overflows go to L2
+let l1: SpillRing<i32, 8, _> = SpillRing::with_sink(l2);
+
+// Push through L1
+for i in 0..100 {
+    l1.push(i);
+}
+
+// L1 holds [92..100] (most recent 8)
+// L1's sink (L2) holds [36..92] (next 56)
+// Earlier items dropped when L2 overflowed
+```
+
+This pattern extends to any depth. Replace the final `DropSink` with storage, logging, or any other sink to preserve all data:
+
+```rust
+// L3: disk storage (never drops)
+let storage = DiskSink::new("events.log");
+
+// L2: warm buffer
+let l2: SpillRing<Event, 1024, _> = SpillRing::with_sink(storage);
+
+// L1: hot buffer  
+let l1: SpillRing<Event, 64, _> = SpillRing::with_sink(l2);
+```
+
+Recent items stay in fast L1 cache, older items in L2, oldest items persist to disk.
 
 ## Custom Sinks
 

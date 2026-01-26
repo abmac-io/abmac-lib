@@ -1,9 +1,8 @@
 //! Ring buffer with overflow spilling to a sink.
 
-use core::{cell::UnsafeCell, mem::MaybeUninit};
-
 #[cfg(not(feature = "no-atomics"))]
 use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{cell::UnsafeCell, mem::MaybeUninit};
 
 use crate::{
     index::{Index, SinkCell},
@@ -496,6 +495,23 @@ impl<T, const N: usize, S: Sink<T>> core::iter::Extend<T> for SpillRing<T, N, S>
 impl<T, const N: usize> Default for SpillRing<T, N, DropSink> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// SpillRing can act as a Sink, enabling ring chaining (ring1 -> ring2).
+///
+/// When used as a sink, items are pushed to the ring. If the ring overflows,
+/// items spill to the ring's own sink, creating a cascade.
+impl<T, const N: usize, S: Sink<T>> Sink<T> for SpillRing<T, N, S> {
+    #[inline]
+    fn send(&mut self, item: T) {
+        self.push(item);
+    }
+
+    #[inline]
+    fn flush(&mut self) {
+        // Flush remaining items in this ring to its sink
+        SpillRing::flush(self);
     }
 }
 
