@@ -8,7 +8,7 @@ use crate::{
     index::{Index, SinkCell},
     iter::{SpillRingIter, SpillRingIterMut},
     sink::{DropSink, Sink},
-    traits::{RingConsumer, RingProducer},
+    traits::{RingConsumer, RingInfo, RingProducer},
 };
 
 /// Slot wrapper with seqlock for safe concurrent access.
@@ -522,6 +522,18 @@ impl<T, const N: usize, S: Sink<T>> Drop for SpillRing<T, N, S> {
     }
 }
 
+impl<T, const N: usize, S: Sink<T>> RingInfo for SpillRing<T, N, S> {
+    #[inline]
+    fn len(&self) -> usize {
+        SpillRing::len(self)
+    }
+
+    #[inline]
+    fn capacity(&self) -> usize {
+        N
+    }
+}
+
 impl<T, const N: usize, S: Sink<T>> RingProducer<T> for SpillRing<T, N, S> {
     #[inline]
     fn try_push(&mut self, item: T) -> Result<(), T> {
@@ -540,26 +552,6 @@ impl<T, const N: usize, S: Sink<T>> RingProducer<T> for SpillRing<T, N, S> {
 
         Ok(())
     }
-
-    #[inline]
-    fn is_full(&self) -> bool {
-        SpillRing::is_full(self)
-    }
-
-    #[inline]
-    fn capacity(&self) -> usize {
-        N
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        SpillRing::len(self)
-    }
-
-    #[inline]
-    fn is_empty(&self) -> bool {
-        SpillRing::is_empty(self)
-    }
 }
 
 impl<T, const N: usize, S: Sink<T>> RingConsumer<T> for SpillRing<T, N, S> {
@@ -571,20 +563,5 @@ impl<T, const N: usize, S: Sink<T>> RingConsumer<T> for SpillRing<T, N, S> {
     #[inline]
     fn peek(&self) -> Option<&T> {
         SpillRing::peek(self)
-    }
-
-    #[inline]
-    fn is_empty(&self) -> bool {
-        SpillRing::is_empty(self)
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        SpillRing::len(self)
-    }
-
-    #[inline]
-    fn capacity(&self) -> usize {
-        N
     }
 }

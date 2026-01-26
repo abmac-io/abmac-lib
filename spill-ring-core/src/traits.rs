@@ -1,46 +1,62 @@
-//! Ring buffer traits.
-
-/// Ring buffer producer.
-pub trait RingProducer<T> {
-    /// Try to push. Returns `Err(item)` if full.
-    fn try_push(&mut self, item: T) -> Result<(), T>;
-
-    /// True if full.
-    fn is_full(&self) -> bool;
-
-    /// Capacity.
-    fn capacity(&self) -> usize;
-
-    /// Current length.
+/// Common ring buffer properties.
+/// Provides size and capacity information shared by both producers and consumers.
+pub trait RingInfo {
+    /// Returns the number of items currently in the ring.
     fn len(&self) -> usize;
 
-    /// True if empty.
+    /// Returns the total capacity of the ring.
+    fn capacity(&self) -> usize;
+
+    /// Returns `true` if the ring contains no items.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Returns `true` if the ring has no available capacity.
+    fn is_full(&self) -> bool {
+        self.len() >= self.capacity()
+    }
 }
 
-/// Ring buffer consumer.
-pub trait RingConsumer<T> {
-    /// Try to pop. Returns `None` if empty.
+/// Producer side of a ring buffer.
+///
+/// Methods for pushing items into the ring. Implementations
+/// may have different overflow behavior (block, fail, or spill to sink).
+///
+/// See [`SpillRing`](crate::SpillRing) for the primary implementation.
+pub trait RingProducer<T>: RingInfo {
+    /// Attempts to push an item into the ring.
+    ///
+    /// # Errors:
+    /// Returns `Ok(())` if successful, or `Err(item)` if the ring is full.
+    #[must_use]
+    fn try_push(&mut self, item: T) -> Result<(), T>;
+}
+
+/// Consumer side of a ring buffer.
+///
+/// Methods for reading and removing items from the ring.
+///
+/// See [`SpillRing`](crate::SpillRing) for the primary implementation.
+pub trait RingConsumer<T>: RingInfo {
+    /// Attempts to pop the oldest item from the ring.
+    ///
+    /// Returns `Some(item)` if the ring was non-empty, or `None` if empty.
     #[must_use]
     fn try_pop(&mut self) -> Option<T>;
 
-    /// Peek at oldest item.
+    /// Returns a reference to the oldest item without removing it.
+    ///
+    /// Returns `None` if the ring is empty.
     #[must_use]
     fn peek(&self) -> Option<&T>;
-
-    /// True if empty.
-    fn is_empty(&self) -> bool;
-
-    /// Current length.
-    fn len(&self) -> usize;
-
-    /// Capacity.
-    fn capacity(&self) -> usize;
 }
 
-/// Combined producer and consumer.
+/// Combined producer and consumer trait.
+///
+/// Automatically implemented for any type that implements both
+///
+/// [`RingProducer`] and [`RingConsumer`].
 pub trait RingTrait<T>: RingProducer<T> + RingConsumer<T> {}
 
 impl<T, R: RingProducer<T> + RingConsumer<T>> RingTrait<T> for R {}
