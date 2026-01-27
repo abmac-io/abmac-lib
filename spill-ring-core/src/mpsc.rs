@@ -466,11 +466,12 @@ mod worker_pool {
 #[cfg(feature = "std")]
 pub use worker_pool::WorkerPool;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
     use crate::CollectSink;
     use std::sync::{Arc, Mutex};
+    use std::vec;
 
     #[test]
     fn basic_mpsc() {
