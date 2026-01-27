@@ -22,5 +22,8 @@ pub use mpsc::{Consumer, MpscRing, Producer, collect_producers};
 pub use ring::SpillRing;
 #[cfg(feature = "std")]
 pub use sink::ChannelSink;
-pub use sink::{CollectSink, DropSink, Flush, FnFlushSink, FnSink, ProducerSink, Sink, sink};
+pub use sink::{
+    BatchSink, CollectSink, DropSink, Flush, FnFlushSink, FnSink, ProducerSink, ReduceSink, Sink,
+    sink,
+};
 pub use traits::{RingConsumer, RingInfo, RingProducer, RingTrait};
