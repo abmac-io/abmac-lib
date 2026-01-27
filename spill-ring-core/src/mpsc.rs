@@ -137,16 +137,6 @@ impl<T, const N: usize, S: Sink<T>> Consumer<T, N, S> {
     }
 }
 
-/// Collect producers back into a consumer for draining.
-pub fn collect<T, const N: usize, S: Sink<T>>(
-    producers: impl IntoIterator<Item = Producer<T, N, S>>,
-    consumer: &mut Consumer<T, N, S>,
-) {
-    for producer in producers {
-        consumer.add_ring(producer.into_ring());
-    }
-}
-
 /// Zero-overhead MPSC ring buffer.
 ///
 /// Creates independent producers that each own a [`SpillRing`] running at full speed.
@@ -193,7 +183,7 @@ impl<T, const N: usize> MpscRing<T, N, DropSink> {
     /// # Example
     ///
     /// ```
-    /// use spill_ring_core::{MpscRing, CollectSink, collect};
+    /// use spill_ring_core::{MpscRing, CollectSink, collect_producers};
     /// use std::thread;
     ///
     /// let (producers, mut consumer) = MpscRing::<u64, 256>::with_consumer(4);
@@ -212,7 +202,7 @@ impl<T, const N: usize> MpscRing<T, N, DropSink> {
     ///     .collect()
     /// });
     ///
-    /// collect(finished, &mut consumer);
+    /// collect_producers(finished, &mut consumer);
     ///
     /// let mut sink = CollectSink::new();
     /// consumer.drain(&mut sink);
@@ -220,52 +210,6 @@ impl<T, const N: usize> MpscRing<T, N, DropSink> {
     pub fn with_consumer(num_producers: usize) -> (Vec<Producer<T, N>>, Consumer<T, N>) {
         let producers = (0..num_producers).map(|_| Producer::new()).collect();
         (producers, Consumer::new())
-    }
-
-    /// Create a pre-warmed worker pool with persistent threads.
-    ///
-    /// This is the recommended API for maximum performance. Each thread owns
-    /// its own ring, cache is pre-warmed, and threads are ready before this
-    /// returns.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use spill_ring_core::MpscRing;
-    ///
-    /// let pool = MpscRing::<u64, 1024>::pooled(4);
-    /// pool.run(10_000); // Each worker pushes 10k items
-    /// let consumer = pool.into_consumer();
-    /// ```
-    #[cfg(feature = "std")]
-    pub fn pooled(num_workers: usize) -> WorkerPool<T, N, DropSink>
-    where
-        T: Send + 'static,
-    {
-        WorkerPool::new(num_workers)
-    }
-
-    /// Create a pre-warmed worker pool with persistent threads.
-    ///
-    /// This is the recommended API for maximum performance. Each thread owns
-    /// its own ring, cache is pre-warmed, and threads are ready before this
-    /// returns.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use spill_ring_core::MpscRing;
-    ///
-    /// let pool = MpscRing::<u64, 1024>::pooled(4);
-    /// pool.run(10_000); // Each worker pushes 10k items
-    /// let consumer = pool.into_consumer();
-    /// ```
-    #[cfg(feature = "std")]
-    pub fn pooled(num_workers: usize) -> WorkerPool<T, N, DropSink>
-    where
-        T: Send + 'static,
-    {
-        WorkerPool::new(num_workers)
     }
 
     /// Create a pre-warmed worker pool with persistent threads.
@@ -315,9 +259,7 @@ impl<T, const N: usize, S: Sink<T> + Clone> MpscRing<T, N, S> {
     pub fn with_sink(num_producers: usize, sink: S) -> Vec<Producer<T, N, S>> {
         (0..num_producers)
             .map(|_| Producer::with_sink(sink.clone()))
-            .collect();
-        let consumer = Consumer::new();
-        (producers, consumer)
+            .collect()
     }
 
     /// Create a pre-warmed worker pool with a custom sink.
