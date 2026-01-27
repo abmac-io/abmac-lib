@@ -196,6 +196,23 @@ impl<T> Sink<T> for ChannelSink<T> {
     }
 }
 
+/// Thread-safe sink wrapper using `Arc<Mutex<S>>`.
+///
+/// Allows multiple producers to share a single sink with mutex synchronization.
+/// Useful for MPSC patterns where all items should go to one collector.
+#[cfg(feature = "std")]
+impl<T, S: Sink<T>> Sink<T> for std::sync::Arc<std::sync::Mutex<S>> {
+    #[inline]
+    fn send(&mut self, item: T) {
+        self.lock().unwrap().send(item);
+    }
+
+    #[inline]
+    fn flush(&mut self) {
+        self.lock().unwrap().flush();
+    }
+}
+
 /// Creates independent sinks for each producer via a factory function.
 ///
 /// When cloned (e.g., by `MpscRing::with_sink`), each clone gets a unique
@@ -306,5 +323,206 @@ where
         if let Some(inner) = &mut self.inner {
             inner.flush();
         }
+    }
+}
+
+/// Batches items and forwards them as a `Vec` when a threshold is reached.
+///
+/// Useful for reducing cascade overhead in chained rings or for batch processing.
+///
+/// # Example
+///
+/// ```
+/// use spill_ring_core::{BatchSink, CollectSink, Sink};
+///
+/// let mut sink = BatchSink::new(3, CollectSink::new());
+///
+/// sink.send(1);
+/// sink.send(2);
+/// // Not yet forwarded - below threshold
+///
+/// sink.send(3);
+/// // Batch of [1, 2, 3] forwarded to inner sink
+///
+/// sink.send(4);
+/// sink.flush();
+/// // Remaining [4] forwarded on flush
+/// ```
+#[derive(Debug, Clone)]
+pub struct BatchSink<T, S> {
+    buffer: Vec<T>,
+    threshold: usize,
+    sink: S,
+}
+
+impl<T, S> BatchSink<T, S> {
+    /// Create a new batch sink.
+    ///
+    /// Items are buffered until `threshold` items accumulate, then forwarded
+    /// as a `Vec<T>` to the inner sink.
+    pub fn new(threshold: usize, sink: S) -> Self {
+        Self {
+            buffer: Vec::with_capacity(threshold),
+            threshold,
+            sink,
+        }
+    }
+
+    /// Get the batch threshold.
+    pub fn threshold(&self) -> usize {
+        self.threshold
+    }
+
+    /// Get the number of items currently buffered.
+    pub fn buffered(&self) -> usize {
+        self.buffer.len()
+    }
+
+    /// Get a reference to the inner sink.
+    pub fn inner(&self) -> &S {
+        &self.sink
+    }
+
+    /// Get a mutable reference to the inner sink.
+    pub fn inner_mut(&mut self) -> &mut S {
+        &mut self.sink
+    }
+
+    /// Consume and return the inner sink.
+    ///
+    /// Any buffered items are dropped. Call `flush()` first to forward them.
+    pub fn into_inner(self) -> S {
+        self.sink
+    }
+}
+
+impl<T, S: Sink<Vec<T>>> Sink<T> for BatchSink<T, S> {
+    #[inline]
+    fn send(&mut self, item: T) {
+        self.buffer.push(item);
+        if self.buffer.len() >= self.threshold {
+            self.sink.send(core::mem::take(&mut self.buffer));
+            self.buffer.reserve(self.threshold);
+        }
+    }
+
+    #[inline]
+    fn send_all(&mut self, items: impl Iterator<Item = T>) {
+        for item in items {
+            self.send(item);
+        }
+    }
+
+    #[inline]
+    fn flush(&mut self) {
+        if !self.buffer.is_empty() {
+            self.sink.send(core::mem::take(&mut self.buffer));
+        }
+        self.sink.flush();
+    }
+}
+
+/// Reduces batches of items using a function and forwards the result.
+///
+/// Combines batching with transformation - items are collected until the
+/// threshold, then reduced to a single value and forwarded.
+///
+/// # Example
+///
+/// ```
+/// use spill_ring_core::{ReduceSink, CollectSink, Sink};
+///
+/// // Sum batches of 4 items
+/// let mut sink = ReduceSink::new(4, |batch: Vec<i32>| batch.iter().sum::<i32>(), CollectSink::new());
+///
+/// for i in 1..=8 {
+///     sink.send(i);
+/// }
+/// sink.flush();
+///
+/// // Inner sink received: [1+2+3+4=10, 5+6+7+8=26]
+/// assert_eq!(sink.into_inner().into_items(), vec![10, 26]);
+/// ```
+#[derive(Debug, Clone)]
+pub struct ReduceSink<T, R, F, S> {
+    buffer: Vec<T>,
+    threshold: usize,
+    reduce: F,
+    sink: S,
+    _marker: core::marker::PhantomData<R>,
+}
+
+impl<T, R, F, S> ReduceSink<T, R, F, S> {
+    /// Create a new reduce sink.
+    ///
+    /// Items are buffered until `threshold` items accumulate, then `reduce`
+    /// is called with the batch and the result is forwarded to the inner sink.
+    pub fn new(threshold: usize, reduce: F, sink: S) -> Self {
+        Self {
+            buffer: Vec::with_capacity(threshold),
+            threshold,
+            reduce,
+            sink,
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Get the batch threshold.
+    pub fn threshold(&self) -> usize {
+        self.threshold
+    }
+
+    /// Get the number of items currently buffered.
+    pub fn buffered(&self) -> usize {
+        self.buffer.len()
+    }
+
+    /// Get a reference to the inner sink.
+    pub fn inner(&self) -> &S {
+        &self.sink
+    }
+
+    /// Get a mutable reference to the inner sink.
+    pub fn inner_mut(&mut self) -> &mut S {
+        &mut self.sink
+    }
+
+    /// Consume and return the inner sink.
+    ///
+    /// Any buffered items are dropped. Call `flush()` first to process them.
+    pub fn into_inner(self) -> S {
+        self.sink
+    }
+}
+
+impl<T, R, F, S> Sink<T> for ReduceSink<T, R, F, S>
+where
+    F: FnMut(Vec<T>) -> R,
+    S: Sink<R>,
+{
+    #[inline]
+    fn send(&mut self, item: T) {
+        self.buffer.push(item);
+        if self.buffer.len() >= self.threshold {
+            let reduced = (self.reduce)(core::mem::take(&mut self.buffer));
+            self.sink.send(reduced);
+            self.buffer.reserve(self.threshold);
+        }
+    }
+
+    #[inline]
+    fn send_all(&mut self, items: impl Iterator<Item = T>) {
+        for item in items {
+            self.send(item);
+        }
+    }
+
+    #[inline]
+    fn flush(&mut self) {
+        if !self.buffer.is_empty() {
+            let reduced = (self.reduce)(core::mem::take(&mut self.buffer));
+            self.sink.send(reduced);
+        }
+        self.sink.flush();
     }
 }
