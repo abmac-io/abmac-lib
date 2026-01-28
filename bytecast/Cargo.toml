@@ -10,9 +10,11 @@ keywords = ["bytes", "serialization", "zero-copy", "no_std", "pod"]
 categories = ["encoding", "no-std"]
 
 [dependencies]
-snafu = "0.8.9"
+bytecast-macros = { path = "../bytecast-macros", optional = true }
 
 [dev-dependencies]
 
 [features]
 std = []
+alloc = []
+derive = ["dep:bytecast-macros"]

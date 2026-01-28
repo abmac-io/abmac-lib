@@ -1,6 +1,9 @@
-//! Implementations of ToBytes/FromBytes for primitive types.
+mod macros;
 
-use crate::{BytesError, FromBytes, ToBytes};
+#[cfg(feature = "alloc")]
+pub mod alloc;
+
+use crate::{BytesError, FromBytes, ToBytes, ViewBytes};
 
 // u8 implementation (special case - no endianness)
 impl ToBytes for u8 {
@@ -98,51 +101,6 @@ impl FromBytes for bool {
     }
 }
 
-// Macro for multi-byte integer types
-macro_rules! impl_bytes_for_int {
-    ($($ty:ty),+) => {
-        $(
-            impl ToBytes for $ty {
-                const MAX_SIZE: Option<usize> = Some(core::mem::size_of::<$ty>());
-
-                #[inline]
-                fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
-                    const SIZE: usize = core::mem::size_of::<$ty>();
-                    if buf.len() < SIZE {
-                        return Err(BytesError::BufferTooSmall {
-                            needed: SIZE,
-                            available: buf.len(),
-                        });
-                    }
-                    buf[..SIZE].copy_from_slice(&self.to_le_bytes());
-                    Ok(SIZE)
-                }
-            }
-
-            impl FromBytes for $ty {
-                #[inline]
-                fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-                    const SIZE: usize = core::mem::size_of::<$ty>();
-                    if buf.len() < SIZE {
-                        return Err(BytesError::UnexpectedEof {
-                            needed: SIZE,
-                            available: buf.len(),
-                        });
-                    }
-                    // SAFETY: We verified buf.len() >= SIZE above, so this slice
-                    // is exactly SIZE bytes and try_into() cannot fail.
-                    let Ok(bytes) = buf[..SIZE].try_into() else {
-                        unreachable!()
-                    };
-                    Ok((<$ty>::from_le_bytes(bytes), SIZE))
-                }
-            }
-        )+
-    };
-}
-
-impl_bytes_for_int!(u16, u32, u64, u128, i16, i32, i64, i128);
-
 // usize/isize - serialize as u64/i64 for portability
 impl ToBytes for usize {
     const MAX_SIZE: Option<usize> = Some(8);
@@ -227,5 +185,138 @@ impl FromBytes for () {
     #[inline]
     fn from_bytes(_buf: &[u8]) -> Result<(Self, usize), BytesError> {
         Ok(((), 0))
+    }
+}
+
+impl ToBytes for char {
+    const MAX_SIZE: Option<usize> = Some(4);
+
+    #[inline]
+    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
+        (*self as u32).to_bytes(buf)
+    }
+}
+
+impl FromBytes for char {
+    #[inline]
+    fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
+        let (code, n) = u32::from_bytes(buf)?;
+        let c = char::from_u32(code).ok_or(BytesError::InvalidData {
+            message: "invalid char codepoint",
+        })?;
+        Ok((c, n))
+    }
+}
+
+impl<T: ToBytes, const N: usize> ToBytes for [T; N] {
+    const MAX_SIZE: Option<usize> = match T::MAX_SIZE {
+        Some(s) => Some(s * N),
+        None => None,
+    };
+
+    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
+        let mut offset = 0;
+        for item in self {
+            offset += item.to_bytes(&mut buf[offset..])?;
+        }
+        Ok(offset)
+    }
+}
+
+impl<T: FromBytes, const N: usize> FromBytes for [T; N] {
+    fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
+        let mut arr: [core::mem::MaybeUninit<T>; N] =
+            unsafe { core::mem::MaybeUninit::uninit().assume_init() };
+        let mut offset = 0;
+
+        for slot in arr.iter_mut() {
+            let (item, n) = T::from_bytes(&buf[offset..])?;
+            slot.write(item);
+            offset += n;
+        }
+
+        // SAFETY: All elements initialized
+        let arr = unsafe { core::mem::transmute_copy::<_, [T; N]>(&arr) };
+        Ok((arr, offset))
+    }
+}
+
+impl<T: ToBytes> ToBytes for Option<T> {
+    const MAX_SIZE: Option<usize> = match T::MAX_SIZE {
+        Some(s) => Some(1 + s),
+        None => None,
+    };
+
+    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
+        match self {
+            None => {
+                if buf.is_empty() {
+                    return Err(BytesError::BufferTooSmall {
+                        needed: 1,
+                        available: 0,
+                    });
+                }
+                buf[0] = 0;
+                Ok(1)
+            }
+            Some(v) => {
+                if buf.is_empty() {
+                    return Err(BytesError::BufferTooSmall {
+                        needed: 1,
+                        available: 0,
+                    });
+                }
+                buf[0] = 1;
+                let n = v.to_bytes(&mut buf[1..])?;
+                Ok(1 + n)
+            }
+        }
+    }
+}
+
+impl<T: FromBytes> FromBytes for Option<T> {
+    fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
+        if buf.is_empty() {
+            return Err(BytesError::UnexpectedEof {
+                needed: 1,
+                available: 0,
+            });
+        }
+        match buf[0] {
+            0 => Ok((None, 1)),
+            1 => {
+                let (v, n) = T::from_bytes(&buf[1..])?;
+                Ok((Some(v), 1 + n))
+            }
+            _ => Err(BytesError::InvalidData {
+                message: "Option discriminant must be 0 or 1",
+            }),
+        }
+    }
+}
+
+impl<'a> ViewBytes<'a> for &'a [u8] {
+    fn view(bytes: &'a [u8]) -> Result<Self, BytesError> {
+        Ok(bytes)
+    }
+}
+
+impl<'a> ViewBytes<'a> for &'a str {
+    fn view(bytes: &'a [u8]) -> Result<Self, BytesError> {
+        core::str::from_utf8(bytes).map_err(|_| BytesError::InvalidData {
+            message: "invalid UTF-8",
+        })
+    }
+}
+
+impl<'a, const N: usize> ViewBytes<'a> for &'a [u8; N] {
+    fn view(bytes: &'a [u8]) -> Result<Self, BytesError> {
+        if bytes.len() < N {
+            return Err(BytesError::UnexpectedEof {
+                needed: N,
+                available: bytes.len(),
+            });
+        }
+        Ok(bytes[..N].try_into().unwrap())
     }
 }

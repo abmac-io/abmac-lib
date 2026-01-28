@@ -1,13 +1,21 @@
 //! Byte serialization traits and implementations.
+#![no_std]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 mod error;
 mod impls;
-mod serializer;
 mod traits;
 
+#[cfg(feature = "alloc")]
+mod serializer;
+
 pub use error::{BytesError, Result};
-pub use serializer::ByteSerializer;
-pub use traits::{FromBytes, ToBytes, ViewBytes};
+pub use traits::{FromBytes, FromBytesExt, ToBytes, ToBytesExt, ViewBytes};
+
+#[cfg(feature = "alloc")]
+pub use serializer::{ByteCursor, ByteReader, ByteSerializer};
 
 #[cfg(test)]
 mod tests;
