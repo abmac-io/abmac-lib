@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["spill-ring", "spill-ring-macros"]
+members = ["spout", "spill-ring", "spill-ring-macros"]
 
 [workspace.package]
 
 [workspace.dependencies]
+spout = { path = "./spout" }

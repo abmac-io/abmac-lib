@@ -1,6 +1,7 @@
 //! Iterators for SpillRing.
 
-use crate::{ring::SpillRing, sink::Sink};
+use crate::ring::SpillRing;
+use spout::Sink;
 
 /// Immutable iterator.
 pub struct SpillRingIter<'a, T, const N: usize, S: Sink<T>> {

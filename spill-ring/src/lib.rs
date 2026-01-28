@@ -8,7 +8,7 @@ mod index;
 mod iter;
 mod mpsc;
 mod ring;
-mod sink;
+//mod sink;
 mod traits;
 
 #[cfg(test)]
@@ -21,8 +21,8 @@ pub use mpsc::WorkerPool;
 pub use mpsc::{Consumer, MpscRing, Producer, collect};
 pub use ring::SpillRing;
 #[cfg(feature = "std")]
-pub use sink::ChannelSink;
-pub use sink::{
+pub use spout::ChannelSink;
+pub use spout::{
     BatchSink, CollectSink, DropSink, Flush, FnFlushSink, FnSink, ProducerSink, ReduceSink, Sink,
     sink,
 };

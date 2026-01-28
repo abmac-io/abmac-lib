@@ -7,9 +7,9 @@ use core::{cell::UnsafeCell, mem::MaybeUninit};
 use crate::{
     index::{Index, SinkCell},
     iter::{SpillRingIter, SpillRingIterMut},
-    sink::{DropSink, Sink},
     traits::{RingConsumer, RingInfo, RingProducer},
 };
+use spout::{DropSink, Sink};
 
 /// Slot wrapper with seqlock for safe concurrent access.
 #[cfg(feature = "atomics")]
