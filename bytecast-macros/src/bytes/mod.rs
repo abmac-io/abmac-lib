@@ -1,4 +1,4 @@
-//! Derive macros for spill_ring_core.
+//! Derive macros for bytecast.
 
 mod from_bytes;
 mod to_bytes;

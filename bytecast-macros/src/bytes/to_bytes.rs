@@ -46,8 +46,8 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     };
 
     Ok(quote! {
-        impl #impl_generics spill_ring_core::ToBytes for #name #ty_generics #where_clause {
-            fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, spill_ring_core::BytesError> {
+        impl #impl_generics bytecast::ToBytes for #name #ty_generics #where_clause {
+            fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, bytecast::BytesError> {
                 let mut offset = 0usize;
                 #body
                 Ok(offset)
@@ -73,7 +73,7 @@ fn generate_struct(fields: &Fields) -> syn::Result<TokenStream2> {
                 .map(|f| {
                     let name = &f.ident;
                     quote! {
-                        let written = spill_ring_core::ToBytes::to_bytes(&self.#name, &mut buf[offset..])?;
+                        let written = bytecast::ToBytes::to_bytes(&self.#name, &mut buf[offset..])?;
                         offset += written;
                     }
                 })
@@ -88,7 +88,7 @@ fn generate_struct(fields: &Fields) -> syn::Result<TokenStream2> {
                 .map(|(i, _)| {
                     let index = syn::Index::from(i);
                     quote! {
-                        let written = spill_ring_core::ToBytes::to_bytes(&self.#index, &mut buf[offset..])?;
+                        let written = bytecast::ToBytes::to_bytes(&self.#index, &mut buf[offset..])?;
                         offset += written;
                     }
                 })
@@ -107,7 +107,7 @@ fn generate_byte_len_struct(fields: &Fields) -> TokenStream2 {
                 .iter()
                 .map(|f| {
                     let name = &f.ident;
-                    quote! { spill_ring_core::ToBytes::byte_len(&self.#name)? }
+                    quote! { bytecast::ToBytes::byte_len(&self.#name)? }
                 })
                 .collect();
 
@@ -124,7 +124,7 @@ fn generate_byte_len_struct(fields: &Fields) -> TokenStream2 {
                 .enumerate()
                 .map(|(i, _)| {
                     let index = syn::Index::from(i);
-                    quote! { spill_ring_core::ToBytes::byte_len(&self.#index)? }
+                    quote! { bytecast::ToBytes::byte_len(&self.#index)? }
                 })
                 .collect();
 
@@ -155,7 +155,7 @@ fn generate_enum(data: &syn::DataEnum) -> syn::Result<TokenStream2> {
                 Fields::Unit => {
                     quote! {
                         Self::#variant_name => {
-                            let written = spill_ring_core::ToBytes::to_bytes(&#discriminant, &mut buf[offset..])?;
+                            let written = bytecast::ToBytes::to_bytes(&#discriminant, &mut buf[offset..])?;
                             offset += written;
                         }
                     }
@@ -170,7 +170,7 @@ fn generate_enum(data: &syn::DataEnum) -> syn::Result<TokenStream2> {
                         .iter()
                         .map(|name| {
                             quote! {
-                                let written = spill_ring_core::ToBytes::to_bytes(#name, &mut buf[offset..])?;
+                                let written = bytecast::ToBytes::to_bytes(#name, &mut buf[offset..])?;
                                 offset += written;
                             }
                         })
@@ -178,7 +178,7 @@ fn generate_enum(data: &syn::DataEnum) -> syn::Result<TokenStream2> {
 
                     quote! {
                         Self::#variant_name(#(#field_names),*) => {
-                            let written = spill_ring_core::ToBytes::to_bytes(&#discriminant, &mut buf[offset..])?;
+                            let written = bytecast::ToBytes::to_bytes(&#discriminant, &mut buf[offset..])?;
                             offset += written;
                             #(#field_writes)*
                         }
@@ -190,7 +190,7 @@ fn generate_enum(data: &syn::DataEnum) -> syn::Result<TokenStream2> {
                         .iter()
                         .map(|name| {
                             quote! {
-                                let written = spill_ring_core::ToBytes::to_bytes(#name, &mut buf[offset..])?;
+                                let written = bytecast::ToBytes::to_bytes(#name, &mut buf[offset..])?;
                                 offset += written;
                             }
                         })
@@ -198,7 +198,7 @@ fn generate_enum(data: &syn::DataEnum) -> syn::Result<TokenStream2> {
 
                     quote! {
                         Self::#variant_name { #(#field_names),* } => {
-                            let written = spill_ring_core::ToBytes::to_bytes(&#discriminant, &mut buf[offset..])?;
+                            let written = bytecast::ToBytes::to_bytes(&#discriminant, &mut buf[offset..])?;
                             offset += written;
                             #(#field_writes)*
                         }
@@ -234,7 +234,7 @@ fn generate_byte_len_enum(data: &syn::DataEnum) -> TokenStream2 {
                         .collect();
                     let field_lens: Vec<_> = field_names
                         .iter()
-                        .map(|name| quote! { spill_ring_core::ToBytes::byte_len(#name)? })
+                        .map(|name| quote! { bytecast::ToBytes::byte_len(#name)? })
                         .collect();
 
                     quote! { Self::#variant_name(#(#field_names),*) => Some(1 #(+ #field_lens)*) }
@@ -243,7 +243,7 @@ fn generate_byte_len_enum(data: &syn::DataEnum) -> TokenStream2 {
                     let field_names: Vec<_> = fields.named.iter().map(|f| &f.ident).collect();
                     let field_lens: Vec<_> = field_names
                         .iter()
-                        .map(|name| quote! { spill_ring_core::ToBytes::byte_len(#name)? })
+                        .map(|name| quote! { bytecast::ToBytes::byte_len(#name)? })
                         .collect();
 
                     quote! { Self::#variant_name { #(#field_names),* } => Some(1 #(+ #field_lens)*) }

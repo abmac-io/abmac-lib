@@ -1,12 +1,13 @@
 [package]
 name = "bytecast-macros"
-version = "1.0.0-rc.1"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-description = "Derive macros (ToBytes, FromBytes) for spill-ring serialization"
-repository = "https://github.com/abmac-io/spill/bytecast-macros"
-keywords = ["bytes", "serialization", "zero-copy", "no_std", "pod"]
+description = "Derive macros (ToBytes, FromBytes) for bytecast serialization"
+repository = "https://github.com/abmac-io/abmac-lib"
+documentation = "https://docs.rs/bytecast-macros"
+keywords = ["bytes", "serialization", "zero-copy", "no_std", "derive"]
 categories = ["encoding", "no-std"]
 
 [lib]

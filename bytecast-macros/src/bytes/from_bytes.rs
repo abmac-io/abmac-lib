@@ -46,8 +46,8 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     };
 
     Ok(quote! {
-        impl #impl_generics spill_ring_core::FromBytes for #name #ty_generics #where_clause {
-            fn from_bytes(buf: &[u8]) -> Result<(Self, usize), spill_ring_core::BytesError> {
+        impl #impl_generics bytecast::FromBytes for #name #ty_generics #where_clause {
+            fn from_bytes(buf: &[u8]) -> Result<(Self, usize), bytecast::BytesError> {
                 let mut offset = 0usize;
                 #body
             }
@@ -72,7 +72,7 @@ fn generate_struct(
                     let field_name = &f.ident;
                     let field_type = &f.ty;
                     quote! {
-                        let (#field_name, consumed) = <#field_type as spill_ring_core::FromBytes>::from_bytes(&buf[offset..])?;
+                        let (#field_name, consumed) = <#field_type as bytecast::FromBytes>::from_bytes(&buf[offset..])?;
                         offset += consumed;
                     }
                 })
@@ -93,7 +93,7 @@ fn generate_struct(
                         syn::Ident::new(&format!("field_{}", i), proc_macro2::Span::call_site());
                     let field_type = &f.ty;
                     quote! {
-                        let (#field_name, consumed) = <#field_type as spill_ring_core::FromBytes>::from_bytes(&buf[offset..])?;
+                        let (#field_name, consumed) = <#field_type as bytecast::FromBytes>::from_bytes(&buf[offset..])?;
                         offset += consumed;
                     }
                 })
@@ -146,7 +146,7 @@ fn generate_enum(name: &syn::Ident, data: &syn::DataEnum) -> syn::Result<TokenSt
                             );
                             let field_type = &f.ty;
                             quote! {
-                                let (#field_name, consumed) = <#field_type as spill_ring_core::FromBytes>::from_bytes(&buf[offset..])?;
+                                let (#field_name, consumed) = <#field_type as bytecast::FromBytes>::from_bytes(&buf[offset..])?;
                                 offset += consumed;
                             }
                         })
@@ -173,7 +173,7 @@ fn generate_enum(name: &syn::Ident, data: &syn::DataEnum) -> syn::Result<TokenSt
                             let field_name = &f.ident;
                             let field_type = &f.ty;
                             quote! {
-                                let (#field_name, consumed) = <#field_type as spill_ring_core::FromBytes>::from_bytes(&buf[offset..])?;
+                                let (#field_name, consumed) = <#field_type as bytecast::FromBytes>::from_bytes(&buf[offset..])?;
                                 offset += consumed;
                             }
                         })
@@ -193,12 +193,12 @@ fn generate_enum(name: &syn::Ident, data: &syn::DataEnum) -> syn::Result<TokenSt
         .collect();
 
     Ok(quote! {
-        let (discriminant, consumed) = <u8 as spill_ring_core::FromBytes>::from_bytes(&buf[offset..])?;
+        let (discriminant, consumed) = <u8 as bytecast::FromBytes>::from_bytes(&buf[offset..])?;
         offset += consumed;
 
         match discriminant {
             #(#match_arms,)*
-            _ => Err(spill_ring_core::BytesError::InvalidData {
+            _ => Err(bytecast::BytesError::InvalidData {
                 message: "invalid enum discriminant"
             })
         }

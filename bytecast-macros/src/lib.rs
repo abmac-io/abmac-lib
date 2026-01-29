@@ -1,4 +1,4 @@
-//! Derive macros for spill_ring.
+//! Derive macros for bytecast.
 
 use proc_macro::TokenStream;
 mod bytes;
