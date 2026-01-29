@@ -194,4 +194,117 @@ fn test_isize_portability() {
     assert_eq!(n, 8);
 }
 
-// ByteSerializer tests
+// char tests
+#[test]
+fn test_char_ascii() {
+    let mut buf = [0u8; 4];
+    let value = 'A';
+
+    let written = value.to_bytes(&mut buf).unwrap();
+    assert_eq!(written, 4);
+
+    let (decoded, consumed) = char::from_bytes(&buf).unwrap();
+    assert_eq!(decoded, value);
+    assert_eq!(consumed, 4);
+}
+
+#[test]
+fn test_char_unicode() {
+    let mut buf = [0u8; 4];
+    let value = '🦀';
+
+    value.to_bytes(&mut buf).unwrap();
+    let (decoded, _) = char::from_bytes(&buf).unwrap();
+    assert_eq!(decoded, value);
+}
+
+#[test]
+fn test_char_invalid() {
+    // 0xD800 is an invalid Unicode scalar value (surrogate)
+    let buf = [0x00, 0xD8, 0x00, 0x00]; // 0xD800 in little-endian
+    let result = char::from_bytes(&buf);
+    assert!(matches!(result, Err(BytesError::InvalidData { .. })));
+}
+
+// Option tests
+#[test]
+fn test_option_some() {
+    let mut buf = [0u8; 8];
+    let value: Option<u32> = Some(0x12345678);
+
+    let written = value.to_bytes(&mut buf).unwrap();
+    assert_eq!(written, 5); // 1 byte discriminant + 4 bytes u32
+
+    let (decoded, consumed) = Option::<u32>::from_bytes(&buf).unwrap();
+    assert_eq!(decoded, value);
+    assert_eq!(consumed, written);
+}
+
+#[test]
+fn test_option_none() {
+    let mut buf = [0u8; 8];
+    let value: Option<u32> = None;
+
+    let written = value.to_bytes(&mut buf).unwrap();
+    assert_eq!(written, 1); // just discriminant
+
+    let (decoded, consumed) = Option::<u32>::from_bytes(&buf).unwrap();
+    assert_eq!(decoded, None);
+    assert_eq!(consumed, 1);
+}
+
+#[test]
+fn test_option_invalid_discriminant() {
+    let buf = [2u8, 0, 0, 0, 0]; // invalid discriminant
+    let result = Option::<u32>::from_bytes(&buf);
+    assert!(matches!(result, Err(BytesError::InvalidData { .. })));
+}
+
+#[test]
+fn test_array_roundtrip() {
+    let mut buf = [0u8; 16];
+    let value: [u32; 4] = [1, 2, 3, 4];
+
+    let written = value.to_bytes(&mut buf).unwrap();
+    assert_eq!(written, 16);
+
+    let (decoded, consumed) = <[u32; 4]>::from_bytes(&buf).unwrap();
+    assert_eq!(decoded, value);
+    assert_eq!(consumed, 16);
+}
+
+// ViewBytes tests
+#[test]
+fn test_view_bytes_slice() {
+    let data = [1u8, 2, 3, 4, 5];
+    let view: &[u8] = ViewBytes::view(&data).unwrap();
+    assert_eq!(view, &[1, 2, 3, 4, 5]);
+}
+
+#[test]
+fn test_view_bytes_str() {
+    let data = b"hello";
+    let view: &str = ViewBytes::view(data).unwrap();
+    assert_eq!(view, "hello");
+}
+
+#[test]
+fn test_view_bytes_str_invalid_utf8() {
+    let data = [0xff, 0xfe]; // invalid UTF-8
+    let result: core::result::Result<&str, _> = ViewBytes::view(&data);
+    assert!(matches!(result, Err(BytesError::InvalidData { .. })));
+}
+
+#[test]
+fn test_view_bytes_array() {
+    let data = [1u8, 2, 3, 4, 5, 6, 7, 8];
+    let view: &[u8; 4] = ViewBytes::view(&data).unwrap();
+    assert_eq!(view, &[1, 2, 3, 4]);
+}
+
+#[test]
+fn test_view_bytes_array_too_short() {
+    let data = [1u8, 2];
+    let result: core::result::Result<&[u8; 4], _> = ViewBytes::view(&data);
+    assert!(matches!(result, Err(BytesError::UnexpectedEof { .. })));
+}
