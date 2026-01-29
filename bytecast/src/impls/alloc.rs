@@ -2,13 +2,93 @@ use alloc::{string::String, vec::Vec};
 
 use crate::{BytesError, FromBytes, ToBytes};
 
+mod var_int {
+    //! Variable-length integer encoding (LEB128-style).
+    //!
+    //! Encodes integers using 1-5 bytes depending on magnitude:
+    //! - 0-127:         1 byte
+    //! - 128-16383:     2 bytes
+    //! - 16384-2097151: 3 bytes
+    //! - etc.
+
+    use crate::BytesError;
+
+    /// Maximum bytes needed to encode a u32 as var_int.
+    pub const MAX_VAR_INT_LEN: usize = 5;
+
+    /// Encode a u32 as a var_int into the buffer. Returns bytes written.
+    #[inline]
+    pub fn encode(mut value: u32, buf: &mut [u8]) -> Result<usize, BytesError> {
+        let mut i = 0;
+        loop {
+            if i >= buf.len() {
+                return Err(BytesError::BufferTooSmall {
+                    needed: i + 1,
+                    available: buf.len(),
+                });
+            }
+            if value < 0x80 {
+                buf[i] = value as u8;
+                return Ok(i + 1);
+            }
+            buf[i] = (value as u8 & 0x7F) | 0x80;
+            value >>= 7;
+            i += 1;
+        }
+    }
+
+    /// Decode a var_int from the buffer. Returns (value, bytes consumed).
+    #[inline]
+    pub fn decode(buf: &[u8]) -> Result<(u32, usize), BytesError> {
+        let mut result: u32 = 0;
+        let mut shift = 0;
+
+        for (i, &byte) in buf.iter().enumerate() {
+            if i >= MAX_VAR_INT_LEN {
+                return Err(BytesError::InvalidData {
+                    message: "var_int too long",
+                });
+            }
+
+            result |= ((byte & 0x7F) as u32) << shift;
+
+            if byte < 0x80 {
+                return Ok((result, i + 1));
+            }
+
+            shift += 7;
+        }
+
+        Err(BytesError::UnexpectedEof {
+            needed: 1,
+            available: 0,
+        })
+    }
+
+    /// Calculate the number of bytes needed to encode a value as var_int.
+    #[inline]
+    pub const fn len(value: u32) -> usize {
+        if value < (1 << 7) {
+            1
+        } else if value < (1 << 14) {
+            2
+        } else if value < (1 << 21) {
+            3
+        } else if value < (1 << 28) {
+            4
+        } else {
+            5
+        }
+    }
+}
+
 impl<T: ToBytes> ToBytes for Vec<T> {
     const MAX_SIZE: Option<usize> = None; // Variable length
 
     fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
-        // Length prefix as u32 (4 bytes) - supports up to 4GB
+        // Length prefix as var_int (1-5 bytes depending on size)
         let len = self.len() as u32;
-        let mut offset = len.to_bytes(buf)?;
+        let mut offset = var_int::encode(len, buf)?;
         for item in self {
             offset += item.to_bytes(&mut buf[offset..])?;
         }
@@ -16,7 +96,7 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     }
 
     fn byte_len(&self) -> Option<usize> {
-        let mut total = 4; // u32 length prefix
+        let mut total = var_int::len(self.len() as u32);
         for item in self {
             total += item.byte_len()?;
         }
@@ -26,7 +106,7 @@ impl<T: ToBytes> ToBytes for Vec<T> {
 
 impl<T: FromBytes> FromBytes for Vec<T> {
     fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        let (len, mut offset) = u32::from_bytes(buf)?;
+        let (len, mut offset) = var_int::decode(buf)?;
         let len = len as usize;
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
@@ -43,9 +123,9 @@ impl ToBytes for String {
 
     fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
         let bytes = self.as_bytes();
-        // Length prefix as u32 (4 bytes) - supports up to 4GB
+        // Length prefix as var_int (1-5 bytes depending on size)
         let len = bytes.len() as u32;
-        let offset = len.to_bytes(buf)?;
+        let offset = var_int::encode(len, buf)?;
 
         if buf.len() - offset < bytes.len() {
             return Err(BytesError::BufferTooSmall {
@@ -58,13 +138,13 @@ impl ToBytes for String {
     }
 
     fn byte_len(&self) -> Option<usize> {
-        Some(4 + self.len())
+        Some(var_int::len(self.len() as u32) + self.len())
     }
 }
 
 impl FromBytes for String {
     fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        let (len, mut offset) = u32::from_bytes(buf)?;
+        let (len, mut offset) = var_int::decode(buf)?;
         let len = len as usize;
 
         if buf.len() - offset < len {
