@@ -6,7 +6,8 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     const MAX_SIZE: Option<usize> = None; // Variable length
 
     fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
-        let len = self.len() as u64;
+        // Length prefix as u32 (4 bytes) - supports up to 4GB
+        let len = self.len() as u32;
         let mut offset = len.to_bytes(buf)?;
         for item in self {
             offset += item.to_bytes(&mut buf[offset..])?;
@@ -15,7 +16,7 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     }
 
     fn byte_len(&self) -> Option<usize> {
-        let mut total = 8; // u64 length prefix
+        let mut total = 4; // u32 length prefix
         for item in self {
             total += item.byte_len()?;
         }
@@ -25,7 +26,7 @@ impl<T: ToBytes> ToBytes for Vec<T> {
 
 impl<T: FromBytes> FromBytes for Vec<T> {
     fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        let (len, mut offset) = u64::from_bytes(buf)?;
+        let (len, mut offset) = u32::from_bytes(buf)?;
         let len = len as usize;
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
@@ -42,7 +43,8 @@ impl ToBytes for String {
 
     fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
         let bytes = self.as_bytes();
-        let len = bytes.len() as u64;
+        // Length prefix as u32 (4 bytes) - supports up to 4GB
+        let len = bytes.len() as u32;
         let offset = len.to_bytes(buf)?;
 
         if buf.len() - offset < bytes.len() {
@@ -56,13 +58,13 @@ impl ToBytes for String {
     }
 
     fn byte_len(&self) -> Option<usize> {
-        Some(8 + self.len())
+        Some(4 + self.len())
     }
 }
 
 impl FromBytes for String {
     fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        let (len, mut offset) = u64::from_bytes(buf)?;
+        let (len, mut offset) = u32::from_bytes(buf)?;
         let len = len as usize;
 
         if buf.len() - offset < len {

@@ -11,10 +11,12 @@ categories = ["encoding", "no-std"]
 
 [dependencies]
 bytecast-macros = { path = "../bytecast-macros", optional = true }
+zerocopy = { version = "0.8", default-features = false }
 
 [dev-dependencies]
+zerocopy = { version = "0.8", features = ["derive"] }
 
 [features]
-std = []
-alloc = []
+std = ["alloc", "zerocopy/std"]
+alloc = ["zerocopy/alloc"]
 derive = ["dep:bytecast-macros"]

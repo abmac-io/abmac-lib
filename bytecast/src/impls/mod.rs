@@ -1,71 +1,19 @@
-mod macros;
+//! Native implementations for types not covered by zerocopy.
+//!
+//! Zerocopy cannot handle:
+//! - `bool` / `char` - not all bit patterns are valid
+//! - `usize` / `isize` - platform-dependent size
+//! - `Option<T>` - discriminant + variable payload
+//! - `Vec<T>` / `String` - variable length (alloc feature)
 
 #[cfg(feature = "alloc")]
 pub mod alloc;
 
+pub mod wrapper;
+
 use crate::{BytesError, FromBytes, ToBytes, ViewBytes};
 
-// u8 implementation (special case - no endianness)
-impl ToBytes for u8 {
-    const MAX_SIZE: Option<usize> = Some(1);
-
-    #[inline]
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
-        if buf.is_empty() {
-            return Err(BytesError::BufferTooSmall {
-                needed: 1,
-                available: 0,
-            });
-        }
-        buf[0] = *self;
-        Ok(1)
-    }
-}
-
-impl FromBytes for u8 {
-    #[inline]
-    fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        if buf.is_empty() {
-            return Err(BytesError::UnexpectedEof {
-                needed: 1,
-                available: 0,
-            });
-        }
-        Ok((buf[0], 1))
-    }
-}
-
-// i8 implementation (special case - no endianness)
-impl ToBytes for i8 {
-    const MAX_SIZE: Option<usize> = Some(1);
-
-    #[inline]
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
-        if buf.is_empty() {
-            return Err(BytesError::BufferTooSmall {
-                needed: 1,
-                available: 0,
-            });
-        }
-        buf[0] = *self as u8;
-        Ok(1)
-    }
-}
-
-impl FromBytes for i8 {
-    #[inline]
-    fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        if buf.is_empty() {
-            return Err(BytesError::UnexpectedEof {
-                needed: 1,
-                available: 0,
-            });
-        }
-        Ok((buf[0] as i8, 1))
-    }
-}
-
-// bool implementation
+// bool - needs validation (only 0 or 1 valid)
 impl ToBytes for bool {
     const MAX_SIZE: Option<usize> = Some(1);
 
@@ -101,93 +49,7 @@ impl FromBytes for bool {
     }
 }
 
-// usize/isize - serialize as u64/i64 for portability
-impl ToBytes for usize {
-    const MAX_SIZE: Option<usize> = Some(8);
-
-    #[inline]
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
-        (*self as u64).to_bytes(buf)
-    }
-}
-
-impl FromBytes for usize {
-    #[inline]
-    fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        let (v, n) = u64::from_bytes(buf)?;
-        Ok((v as usize, n))
-    }
-}
-
-impl ToBytes for isize {
-    const MAX_SIZE: Option<usize> = Some(8);
-
-    #[inline]
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
-        (*self as i64).to_bytes(buf)
-    }
-}
-
-impl FromBytes for isize {
-    #[inline]
-    fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        let (v, n) = i64::from_bytes(buf)?;
-        Ok((v as isize, n))
-    }
-}
-
-// Floating point types
-impl ToBytes for f32 {
-    const MAX_SIZE: Option<usize> = Some(4);
-
-    #[inline]
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
-        self.to_bits().to_bytes(buf)
-    }
-}
-
-impl FromBytes for f32 {
-    #[inline]
-    fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        let (bits, n) = u32::from_bytes(buf)?;
-        Ok((f32::from_bits(bits), n))
-    }
-}
-
-impl ToBytes for f64 {
-    const MAX_SIZE: Option<usize> = Some(8);
-
-    #[inline]
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
-        self.to_bits().to_bytes(buf)
-    }
-}
-
-impl FromBytes for f64 {
-    #[inline]
-    fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        let (bits, n) = u64::from_bytes(buf)?;
-        Ok((f64::from_bits(bits), n))
-    }
-}
-
-// Unit type
-impl ToBytes for () {
-    const MAX_SIZE: Option<usize> = Some(0);
-
-    #[inline]
-    fn to_bytes(&self, _buf: &mut [u8]) -> Result<usize, BytesError> {
-        Ok(0)
-    }
-}
-
-impl FromBytes for () {
-    #[inline]
-    fn from_bytes(_buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        Ok(((), 0))
-    }
-}
-
+// char - needs validation (not all u32 values are valid)
 impl ToBytes for char {
     const MAX_SIZE: Option<usize> = Some(4);
 
@@ -208,39 +70,43 @@ impl FromBytes for char {
     }
 }
 
-impl<T: ToBytes, const N: usize> ToBytes for [T; N] {
-    const MAX_SIZE: Option<usize> = match T::MAX_SIZE {
-        Some(s) => Some(s * N),
-        None => None,
-    };
+// usize - platform-dependent, serialize as u64 for portability
+impl ToBytes for usize {
+    const MAX_SIZE: Option<usize> = Some(8);
 
+    #[inline]
     fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
-        let mut offset = 0;
-        for item in self {
-            offset += item.to_bytes(&mut buf[offset..])?;
-        }
-        Ok(offset)
+        (*self as u64).to_bytes(buf)
     }
 }
 
-impl<T: FromBytes, const N: usize> FromBytes for [T; N] {
+impl FromBytes for usize {
+    #[inline]
     fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
-        let mut arr: [core::mem::MaybeUninit<T>; N] =
-            unsafe { core::mem::MaybeUninit::uninit().assume_init() };
-        let mut offset = 0;
-
-        for slot in arr.iter_mut() {
-            let (item, n) = T::from_bytes(&buf[offset..])?;
-            slot.write(item);
-            offset += n;
-        }
-
-        // SAFETY: All elements initialized
-        let arr = unsafe { core::mem::transmute_copy::<_, [T; N]>(&arr) };
-        Ok((arr, offset))
+        let (v, n) = u64::from_bytes(buf)?;
+        Ok((v as usize, n))
     }
 }
 
+// isize - platform-dependent, serialize as i64 for portability
+impl ToBytes for isize {
+    const MAX_SIZE: Option<usize> = Some(8);
+
+    #[inline]
+    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
+        (*self as i64).to_bytes(buf)
+    }
+}
+
+impl FromBytes for isize {
+    #[inline]
+    fn from_bytes(buf: &[u8]) -> Result<(Self, usize), BytesError> {
+        let (v, n) = i64::from_bytes(buf)?;
+        Ok((v as isize, n))
+    }
+}
+
+// Option<T> - zerocopy cannot handle this (discriminant + variable payload)
 impl<T: ToBytes> ToBytes for Option<T> {
     const MAX_SIZE: Option<usize> = match T::MAX_SIZE {
         Some(s) => Some(1 + s),
@@ -295,6 +161,7 @@ impl<T: FromBytes> FromBytes for Option<T> {
     }
 }
 
+// ViewBytes implementations for zero-copy views
 impl<'a> ViewBytes<'a> for &'a [u8] {
     fn view(bytes: &'a [u8]) -> Result<Self, BytesError> {
         Ok(bytes)

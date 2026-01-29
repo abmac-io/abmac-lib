@@ -1,4 +1,9 @@
 //! Byte serialization traits and implementations.
+//!
+//! This crate provides `ToBytes` and `FromBytes` traits for serializing
+//! Rust types to and from byte buffers. Fixed-size types are handled
+//! via zerocopy (internal), while variable-length types like `Option<T>`,
+//! `Vec<T>`, and `String` have native implementations.
 #![no_std]
 
 #[cfg(feature = "alloc")]
@@ -12,7 +17,11 @@ mod traits;
 mod serializer;
 
 pub use error::{BytesError, Result};
+pub use impls::wrapper::ZeroCopyType;
 pub use traits::{FromBytes, FromBytesExt, ToBytes, ToBytesExt, ViewBytes};
+
+// Re-export zerocopy derives for custom #[repr(C)] structs
+pub use zerocopy::{FromBytes as ZcFromBytes, Immutable, IntoBytes, KnownLayout};
 
 #[cfg(feature = "alloc")]
 pub use serializer::{ByteCursor, ByteReader, ByteSerializer};
