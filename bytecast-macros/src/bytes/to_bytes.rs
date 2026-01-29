@@ -64,9 +64,7 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     })
 }
 
-// =============================================================================
 // Struct serialization
-// =============================================================================
 
 fn generate_struct(fields: &Fields) -> syn::Result<TokenStream2> {
     match fields {
@@ -205,9 +203,7 @@ fn generate_max_size_struct(fields: &Fields) -> TokenStream2 {
     }
 }
 
-// =============================================================================
 // Enum serialization
-// =============================================================================
 
 fn generate_enum(data: &syn::DataEnum) -> syn::Result<TokenStream2> {
     let match_arms: Vec<_> = data
