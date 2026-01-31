@@ -23,6 +23,10 @@ pub use traits::{FromBytes, FromBytesExt, ToBytes, ToBytesExt, ViewBytes};
 // Re-export zerocopy derives for custom #[repr(C)] structs
 pub use zerocopy::{FromBytes as ZcFromBytes, Immutable, IntoBytes, KnownLayout};
 
+// Re-export derive macros when derive feature is enabled
+#[cfg(feature = "derive")]
+pub use bytecast_macros::{FromBytes as DeriveFromBytes, ToBytes as DeriveToBytes};
+
 #[cfg(feature = "alloc")]
 pub use serializer::{ByteCursor, ByteReader, ByteSerializer};
 

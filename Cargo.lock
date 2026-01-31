@@ -74,6 +74,7 @@ dependencies = [
 name = "bytecast-macros"
 version = "1.0.0"
 dependencies = [
+ "bytecast",
  "proc-macro2",
  "quote",
  "syn",
