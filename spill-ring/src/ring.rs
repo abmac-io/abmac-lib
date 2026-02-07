@@ -50,6 +50,9 @@ pub struct SpillRing<T, const N: usize, S: Spout<T> = DropSpout> {
     pub(crate) buffer: [Slot<T>; N],
     pub(crate) head: Index,
     pub(crate) tail: Index,
+    /// Producer-local cache of head. Avoids cross-core reads on every push
+    /// when the ring is not full. Only the producer reads/writes this field.
+    cached_head: core::cell::Cell<usize>,
     sink: SpoutCell<S>,
 }
 
@@ -89,6 +92,7 @@ impl<T, const N: usize> SpillRing<T, N, DropSpout> {
             buffer: [const { Slot::new() }; N],
             head: Index::new(0),
             tail: Index::new(0),
+            cached_head: core::cell::Cell::new(0),
             sink: SpoutCell::new(DropSpout),
         }
     }
@@ -117,6 +121,7 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
             buffer: [const { Slot::new() }; N],
             head: Index::new(0),
             tail: Index::new(0),
+            cached_head: core::cell::Cell::new(0),
             sink: SpoutCell::new(sink),
         }
     }
@@ -141,6 +146,7 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
         }
         self.head.store(0);
         self.tail.store(0);
+        self.cached_head.set(0);
     }
 
     /// Push an item. If full, evicts oldest to spout.
@@ -155,58 +161,64 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
         // Load current tail (only producer modifies tail, so relaxed is fine)
         let tail = self.tail.load_relaxed();
 
-        // Ensure there's room: evict until tail - head < N
-        loop {
-            let head = self.head.load();
-            if tail.wrapping_sub(head) < N {
-                break; // There's room
-            }
+        // Check cached head first to avoid cross-core read
+        let mut head = self.cached_head.get();
+        if tail.wrapping_sub(head) >= N {
+            // Cache says full — re-read real head (consumer may have advanced it)
+            head = self.head.load();
+            self.cached_head.set(head);
 
-            // Buffer is full - need to evict
-            let evict_idx = head % N;
-            let slot = &self.buffer[evict_idx];
+            // Ensure there's room: evict until tail - head < N
+            while tail.wrapping_sub(head) >= N {
+                let evict_idx = head % N;
+                let slot = &self.buffer[evict_idx];
 
-            // CRITICAL: Claim the seqlock BEFORE head CAS
-            let seq = slot.seq.load(Ordering::Acquire);
-            if seq & 1 != 0 {
-                // Odd = someone else has it (consumer reading), spin
-                core::hint::spin_loop();
-                continue;
-            }
-
-            // Try to claim the seqlock
-            if slot
-                .seq
-                .compare_exchange(
-                    seq,
-                    seq.wrapping_add(1),
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                )
-                .is_err()
-            {
-                // Lost the race, retry
-                continue;
-            }
-
-            // We have the seqlock - now try to advance head
-            match self.head.compare_exchange(head, head.wrapping_add(1)) {
-                Ok(_) => {
-                    // Success! Read and evict the item
-                    let evicted = unsafe { (*slot.data.get()).assume_init_read() };
-
-                    // Release the slot (set seq to even)
-                    slot.seq.store(seq.wrapping_add(2), Ordering::Release);
-
-                    // Send to sink
-                    unsafe { self.sink.get_mut_unchecked().send(evicted) };
-                    break; // Made room
-                }
-                Err(_) => {
-                    // Head CAS failed (consumer got it first)
-                    // Release the seqlock and retry
-                    slot.seq.store(seq.wrapping_add(2), Ordering::Release);
+                // CRITICAL: Claim the seqlock BEFORE head CAS
+                let seq = slot.seq.load(Ordering::Acquire);
+                if seq & 1 != 0 {
+                    // Odd = someone else has it (consumer reading), spin
+                    core::hint::spin_loop();
                     continue;
+                }
+
+                // Try to claim the seqlock
+                if slot
+                    .seq
+                    .compare_exchange(
+                        seq,
+                        seq.wrapping_add(1),
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    )
+                    .is_err()
+                {
+                    // Lost the race, retry
+                    continue;
+                }
+
+                // We have the seqlock - now try to advance head
+                match self.head.compare_exchange(head, head.wrapping_add(1)) {
+                    Ok(_) => {
+                        // Success! Read and evict the item
+                        let evicted = unsafe { (*slot.data.get()).assume_init_read() };
+
+                        // Release the slot (set seq to even)
+                        slot.seq.store(seq.wrapping_add(2), Ordering::Release);
+
+                        // Update cached head
+                        head = head.wrapping_add(1);
+                        self.cached_head.set(head);
+
+                        // Send to sink
+                        unsafe { self.sink.get_mut_unchecked().send(evicted) };
+                    }
+                    Err(actual) => {
+                        // Head CAS failed (consumer got it first)
+                        // Release the seqlock and retry with updated head
+                        slot.seq.store(seq.wrapping_add(2), Ordering::Release);
+                        head = actual;
+                        self.cached_head.set(head);
+                    }
                 }
             }
         }
@@ -254,18 +266,24 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
         let tail = self.tail.load_relaxed();
         let idx = tail % N;
 
-        // Evict if full
-        let head = self.head.load();
+        // Check cached head first to avoid reading the real head
+        let mut head = self.cached_head.get();
         if tail.wrapping_sub(head) >= N {
-            let evict_idx = head % N;
-            let evicted = unsafe { (*self.buffer[evict_idx].data.get()).assume_init_read() };
-            self.head.store(head.wrapping_add(1));
-            unsafe { self.sink.get_mut_unchecked().send(evicted) };
+            // Cache says full — re-read the real head (consumer may have advanced it)
+            head = self.head.load();
+            self.cached_head.set(head);
+
+            if tail.wrapping_sub(head) >= N {
+                // Actually full — evict oldest
+                let evict_idx = head % N;
+                let evicted = unsafe { (*self.buffer[evict_idx].data.get()).assume_init_read() };
+                self.head.store(head.wrapping_add(1));
+                self.cached_head.set(head.wrapping_add(1));
+                unsafe { self.sink.get_mut_unchecked().send(evicted) };
+            }
         }
 
-        // Write item - use black_box to prevent the compiler from optimizing away
-        // the write when called across library boundaries
-        unsafe { (*self.buffer[idx].data.get()).write(core::hint::black_box(item)) };
+        unsafe { (*self.buffer[idx].data.get()).write(item) };
         self.tail.store(tail.wrapping_add(1));
     }
 
