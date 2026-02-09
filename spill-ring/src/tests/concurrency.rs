@@ -3,12 +3,12 @@ extern crate std;
 use std::sync::Arc;
 use std::thread;
 
-use crate::SpillRing;
+use crate::SpscRing;
 
 /// Test SPSC: one producer thread, one consumer thread.
 #[test]
 fn spsc_producer_consumer() {
-    let ring = Arc::new(SpillRing::<usize, 64>::new());
+    let ring = Arc::new(SpscRing::<usize, 64>::new());
     let num_items: usize = 10_000;
 
     let producer_ring = Arc::clone(&ring);
@@ -59,7 +59,7 @@ fn spsc_producer_consumer() {
 /// Stress test: rapid push/pop in SPSC pattern.
 #[test]
 fn spsc_stress() {
-    let ring = Arc::new(SpillRing::<usize, 16>::new());
+    let ring = Arc::new(SpscRing::<usize, 16>::new());
     let iterations = 50_000;
 
     let producer_ring = Arc::clone(&ring);
@@ -103,7 +103,7 @@ fn spsc_stress() {
 /// Test that consumer sees consistent state during producer activity.
 #[test]
 fn spsc_len_consistency() {
-    let ring = Arc::new(SpillRing::<usize, 32>::new());
+    let ring = Arc::new(SpscRing::<usize, 32>::new());
 
     let producer_ring = Arc::clone(&ring);
     let producer = thread::spawn(move || {

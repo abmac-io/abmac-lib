@@ -1,7 +1,7 @@
 //! Zero-overhead MPSC (Multiple-Producer, Single-Consumer) ring buffer.
 //!
-//! Each producer owns an independent [`SpillRing`] running at full speed (~4.6 Gelem/s
-//! with `no-atomics`). No shared state, no locks, no contention on the hot path.
+//! Each producer owns an independent [`SpillRing`] running at full speed (~4.6 Gelem/s).
+//! No shared state, no locks, no contention on the hot path.
 //! Items automatically flush to the configured sink on overflow and when dropped.
 //!
 //! # Example
@@ -46,7 +46,7 @@ pub struct Producer<T, const N: usize, S: Spout<T> = DropSpout> {
 impl<T, const N: usize, S: Spout<T>> Producer<T, N, S> {
     /// Push an item to this producer's ring.
     ///
-    /// This is the hot path - runs at ~4.6 Gelem/s with `no-atomics`.
+    /// This is the hot path - runs at ~4.6 Gelem/s.
     #[inline]
     pub fn push(&self, item: T) {
         self.ring.push(item);

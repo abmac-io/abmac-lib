@@ -8,22 +8,16 @@ mod iter;
 mod mpsc;
 mod read;
 mod ring;
+mod spsc;
 mod traits;
 
 #[cfg(test)]
 mod tests;
-
-//pub use spout::{
-//    BatchSpout, CollectSpout, DropSpout, Flush, FnFlushSpout, FnSpout, ProducerSpout, ReduceSpout,
-//    Spout, spout,
-//};
-//
-//#[cfg(feature = "std")]
-//pub use spout::ChannelSpout;
 
 pub use iter::{SpillRingIter, SpillRingIterMut};
 pub use mpsc::{Consumer, MpscRing, Producer, collect};
 #[cfg(feature = "std")]
 pub use mpsc::{PoolBuilder, WorkerPool};
 pub use ring::SpillRing;
+pub use spsc::SpscRing;
 pub use traits::{RingConsumer, RingInfo, RingProducer, RingTrait};

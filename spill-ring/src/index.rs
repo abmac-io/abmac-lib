@@ -1,8 +1,8 @@
-//! Index abstraction for atomic or non-atomic access.
+//! Index abstractions for atomic and non-atomic access.
 
 use core::cell::UnsafeCell;
 
-// ── SpoutCell (shared between atomic and non-atomic paths) ────────────
+// ── SpoutCell (shared between SpillRing and SpscRing) ─────────────────
 
 /// Interior mutable cell for spout.
 #[repr(transparent)]
@@ -35,21 +35,18 @@ impl<S> SpoutCell<S> {
 }
 
 unsafe impl<S: Send> Send for SpoutCell<S> {}
-
-#[cfg(feature = "atomics")]
 unsafe impl<S: Send> Sync for SpoutCell<S> {}
 
-// ── Index (atomic path) ───────────────────────────────────────────────
+// ── AtomicIndex (for SpscRing) ────────────────────────────────────────
 
-#[cfg(feature = "atomics")]
 mod atomic {
     use core::sync::atomic::{AtomicUsize, Ordering};
 
     /// Atomic index using Acquire/Release ordering.
     #[repr(transparent)]
-    pub struct Index(AtomicUsize);
+    pub struct AtomicIndex(AtomicUsize);
 
-    impl Index {
+    impl AtomicIndex {
         #[inline]
         pub const fn new(val: usize) -> Self {
             Self(AtomicUsize::new(val))
@@ -87,17 +84,17 @@ mod atomic {
     }
 }
 
-// ── Index (non-atomic path) ───────────────────────────────────────────
+// ── CellIndex (for SpillRing) ─────────────────────────────────────────
 
-#[cfg(not(feature = "atomics"))]
 mod non_atomic {
     use core::cell::Cell;
 
     /// Non-atomic index for single-context use.
     #[repr(transparent)]
-    pub struct Index(Cell<usize>);
+    pub struct CellIndex(Cell<usize>);
 
-    impl Index {
+    #[allow(dead_code)]
+    impl CellIndex {
         #[inline]
         pub const fn new(val: usize) -> Self {
             Self(Cell::new(val))
@@ -118,15 +115,13 @@ mod non_atomic {
             self.0.set(val);
         }
 
-        /// Load without atomics (exclusive access).
-        /// Uses direct `&mut` access — no `Cell` overhead.
+        /// Load without Cell overhead (exclusive access).
         #[inline]
         pub fn load_mut(&mut self) -> usize {
             *self.0.get_mut()
         }
 
-        /// Store without atomics (exclusive access).
-        /// Uses direct `&mut` access — no `Cell` overhead.
+        /// Store without Cell overhead (exclusive access).
         #[inline]
         pub fn store_mut(&mut self, val: usize) {
             *self.0.get_mut() = val;
@@ -134,8 +129,5 @@ mod non_atomic {
     }
 }
 
-#[cfg(feature = "atomics")]
-pub use atomic::Index;
-
-#[cfg(not(feature = "atomics"))]
-pub use non_atomic::Index;
+pub use atomic::AtomicIndex;
+pub use non_atomic::CellIndex;

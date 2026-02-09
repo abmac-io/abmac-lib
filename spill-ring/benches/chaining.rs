@@ -2,7 +2,7 @@
 //!
 //! Chained rings can only use `push(&self)` because the inner ring is owned
 //! by the outer ring's sink (no `&mut self` available). Single-ring baselines
-//! also use `push(&self)` so both sides go through the same atomic code path,
+//! also use `push(&self)` so both sides go through the same code path,
 //! making the comparison fair.
 //!
 //! NOTE: Chained rings must be recreated each iteration because inner rings

@@ -10,7 +10,7 @@
 //! before bumping the counter again.
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use spill_ring::SpillRing;
+use spill_ring::SpscRing;
 use std::hint::black_box;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -21,7 +21,7 @@ use std::thread::{self, JoinHandle};
 // ---------------------------------------------------------------------------
 
 struct SharedState<const N: usize> {
-    ring: SpillRing<u64, N>,
+    ring: SpscRing<u64, N>,
     /// Monotonically increasing round number. Workers spin until this advances.
     round: AtomicU64,
     /// How many items to push/pop each round.
@@ -44,7 +44,7 @@ struct SpscHarness<const N: usize> {
 impl<const N: usize> SpscHarness<N> {
     fn new(producer_delay: u32, consumer_delay: u32) -> Self {
         let state = Arc::new(SharedState {
-            ring: SpillRing::new(),
+            ring: SpscRing::new(),
             round: AtomicU64::new(0),
             count: AtomicU64::new(0),
             producer_done: AtomicBool::new(false),

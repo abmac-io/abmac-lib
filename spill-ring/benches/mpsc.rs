@@ -74,7 +74,7 @@ fn mpsc_vs_single(c: &mut Criterion) {
     let total_items = 200_000u64;
     group.throughput(Throughput::Elements(total_items));
 
-    // Single-threaded baseline — exclusive `push_mut` path (no atomics)
+    // Single-threaded baseline — exclusive `push_mut` path
     group.bench_function("single_push_mut", |b| {
         let mut ring: SpillRing<u64, 1024> = SpillRing::new();
         b.iter(|| {

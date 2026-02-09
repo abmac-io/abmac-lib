@@ -77,9 +77,8 @@ fn flush_to_sink() {
 }
 
 #[test]
-#[allow(unused_mut)] // mut required with `atomics` feature
 fn peek_oldest_and_newest() {
-    let mut ring: SpillRing<i32, 4> = SpillRing::new();
+    let ring: SpillRing<i32, 4> = SpillRing::new();
 
     assert_eq!(ring.peek(), None);
     assert_eq!(ring.peek_back(), None);
@@ -95,9 +94,8 @@ fn peek_oldest_and_newest() {
 }
 
 #[test]
-#[allow(unused_mut)] // mut required with `atomics` feature
 fn iteration() {
-    let mut ring: SpillRing<i32, 4> = SpillRing::new();
+    let ring: SpillRing<i32, 4> = SpillRing::new();
 
     ring.push(1);
     ring.push(2);
@@ -155,9 +153,8 @@ fn wraparound() {
 }
 
 #[test]
-#[allow(unused_mut)] // mut required with `atomics` feature
 fn get_by_index() {
-    let mut ring: SpillRing<i32, 4> = SpillRing::new();
+    let ring: SpillRing<i32, 4> = SpillRing::new();
 
     ring.push(10);
     ring.push(20);
@@ -290,9 +287,8 @@ fn default_creates_empty_ring() {
 }
 
 #[test]
-#[allow(unused_mut)] // mut required with `atomics` feature
 fn iter_nth() {
-    let mut ring: SpillRing<i32, 8> = SpillRing::new();
+    let ring: SpillRing<i32, 8> = SpillRing::new();
     ring.push(10);
     ring.push(20);
     ring.push(30);

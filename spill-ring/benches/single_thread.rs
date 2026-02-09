@@ -1,7 +1,7 @@
 //! Single-thread benchmarks — exclusive `push_mut`/`pop_mut` path (`&mut self`).
 //!
 //! Every benchmark in this file uses the non-atomic, exclusive-access API.
-//! No atomics, no cross-core traffic. This is the raw data-structure baseline.
+//! No cross-core traffic. This is the raw data-structure baseline.
 //!
 //! Rings are pre-warmed (via `SpillRing::new()`) and reused across iterations
 //! via `clear()` unless noted otherwise.
@@ -349,7 +349,6 @@ fn pop_mut_latency(c: &mut Criterion) {
 }
 
 /// Peek latency (no removal).
-#[allow(unused_mut)] // mut required with `atomics` feature
 fn peek_latency(c: &mut Criterion) {
     let mut group = c.benchmark_group("single/peek_latency");
 

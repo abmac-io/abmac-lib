@@ -8,7 +8,7 @@
 //! Performance: ~1.9 GB/s on NVMe (vs ~260 MB/s with sequential read-then-write)
 //!
 //! Run with:
-//!   cargo run --example compio_file_copy --features std,atomics --release -- input.bin output.bin
+//!   cargo run --example compio_file_copy --features std --release -- input.bin output.bin
 //!
 //! Create test file:
 //!   dd if=/dev/urandom of=input.bin bs=1M count=1024
@@ -18,7 +18,7 @@ use compio::{
     fs::File,
     io::{AsyncReadAtExt, AsyncWriteAtExt},
 };
-use spill_ring::SpillRing;
+use spill_ring::SpscRing;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -68,7 +68,7 @@ fn main() {
 
     // SPSC ring: reader pushes, writer pops
     // Using DropSink means we MUST implement backpressure to avoid data loss
-    let ring = Arc::new(SpillRing::<Vec<u8>, RING_CAPACITY>::new());
+    let ring = Arc::new(SpscRing::<Vec<u8>, RING_CAPACITY>::new());
 
     // Reader thread - uses compio/io_uring for async reads
     let reader_ring = Arc::clone(&ring);

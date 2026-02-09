@@ -129,7 +129,7 @@ fn main() -> std::io::Result<()> {
         .map(|_| Arc::new(AtomicU64::new(0)))
         .collect();
 
-    // Spawn producers - each runs at full no-atomics speed
+    // Spawn producers - each runs at full speed
     // Items flush to shared spout on overflow and when producer drops
     thread::scope(|s| {
         for (producer_id, producer) in producers.into_iter().enumerate() {
