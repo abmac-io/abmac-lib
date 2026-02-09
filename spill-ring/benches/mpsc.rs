@@ -1,8 +1,8 @@
 //! MPSC (Multiple-Producer, Single-Consumer) benchmarks.
 //!
-//! All multi-threaded benchmarks use the WorkerPool API with pre-warmed rings
-//! and monomorphized work functions. This is the recommended path for maximum
-//! performance — thread-per-core, no contention on the hot path.
+//! Pooled benchmarks use `push(&self)` via WorkerPool — the atomic path.
+//! The single-thread baseline uses `push_mut(&mut self)` — the exclusive path.
+//! Group names include the method under test so comparisons are self-describing.
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use spill_ring::{MpscRing, SpillRing};
@@ -67,25 +67,26 @@ fn mpsc_full_cycle(c: &mut Criterion) {
     group.finish();
 }
 
-/// Compare single-threaded ring vs pooled 4-worker.
+/// Compare single-threaded exclusive path vs pooled 4-worker atomic path.
 fn mpsc_vs_single(c: &mut Criterion) {
     let mut group = c.benchmark_group("mpsc_vs_single");
 
     let total_items = 200_000u64;
     group.throughput(Throughput::Elements(total_items));
 
-    // Single-threaded baseline
-    group.bench_function("single_thread", |b| {
-        let ring: SpillRing<u64, 1024> = SpillRing::new();
+    // Single-threaded baseline — exclusive `push_mut` path (no atomics)
+    group.bench_function("single_push_mut", |b| {
+        let mut ring: SpillRing<u64, 1024> = SpillRing::new();
         b.iter(|| {
+            ring.clear();
             for i in 0..total_items {
-                ring.push(black_box(i));
+                ring.push_mut(black_box(i));
             }
         })
     });
 
-    // Pooled 4 workers (50k each)
-    group.bench_function("pool_4_workers", |b| {
+    // Pooled 4 workers (50k each) — atomic `push` path
+    group.bench_function("pool_4w_push", |b| {
         let per_worker = total_items / 4;
         let mut pool = MpscRing::<u64, 1024>::pool(4).spawn(|ring, id, count: &u64| {
             for i in 0..*count {

@@ -30,7 +30,7 @@ impl<'a, T, const N: usize, S: Spout<T>> Iterator for SpillRingIter<'a, T, N, S>
         if self.pos >= self.len {
             return None;
         }
-        let idx = self.head.wrapping_add(self.pos) % N;
+        let idx = self.head.wrapping_add(self.pos) & (N - 1);
         self.pos += 1;
         Some(unsafe {
             let slot = &self.ring.buffer[idx];
@@ -87,7 +87,7 @@ impl<'a, T, const N: usize, S: Spout<T>> Iterator for SpillRingIterMut<'a, T, N,
         if self.pos >= self.len {
             return None;
         }
-        let idx = self.head.wrapping_add(self.pos) % N;
+        let idx = self.head.wrapping_add(self.pos) & (N - 1);
         self.pos += 1;
         Some(unsafe {
             let slot = &self.ring.buffer[idx];

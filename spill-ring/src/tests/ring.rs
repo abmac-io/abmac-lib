@@ -350,3 +350,121 @@ fn extend_with_overflow_evicts() {
     assert_eq!(ring.len(), 4);
     assert_eq!(ring.pop(), Some(6));
 }
+
+// ── push_slice tests ──────────────────────────────────────────────────
+
+#[test]
+fn push_slice_empty() {
+    let mut ring: SpillRing<u32, 8> = SpillRing::new();
+    ring.push_slice(&[]);
+    assert!(ring.is_empty());
+}
+
+#[test]
+fn push_slice_single() {
+    let mut ring: SpillRing<u32, 8> = SpillRing::new();
+    ring.push_slice(&[42]);
+    assert_eq!(ring.len(), 1);
+    assert_eq!(ring.pop_mut(), Some(42));
+}
+
+#[test]
+fn push_slice_fits_no_eviction() {
+    let mut ring: SpillRing<u32, 8> = SpillRing::new();
+    ring.push_slice(&[1, 2, 3, 4, 5]);
+    assert_eq!(ring.len(), 5);
+    for i in 1..=5 {
+        assert_eq!(ring.pop_mut(), Some(i));
+    }
+}
+
+#[test]
+fn push_slice_exact_capacity() {
+    let mut ring: SpillRing<u32, 4> = SpillRing::new();
+    ring.push_slice(&[10, 20, 30, 40]);
+    assert_eq!(ring.len(), 4);
+    assert!(ring.is_full());
+    assert_eq!(ring.pop_mut(), Some(10));
+    assert_eq!(ring.pop_mut(), Some(20));
+    assert_eq!(ring.pop_mut(), Some(30));
+    assert_eq!(ring.pop_mut(), Some(40));
+}
+
+#[test]
+fn push_slice_partial_eviction() {
+    let sink = CollectSpout::new();
+    let mut ring = SpillRing::<u32, 4, _>::with_sink(sink);
+    ring.push_slice(&[1, 2, 3]); // 3 items, 1 free
+    ring.push_slice(&[4, 5, 6]); // needs 3, only 1 free → evict 2
+    assert_eq!(ring.sink().items(), vec![1, 2]);
+    assert_eq!(ring.len(), 4);
+    assert_eq!(ring.pop_mut(), Some(3));
+    assert_eq!(ring.pop_mut(), Some(4));
+    assert_eq!(ring.pop_mut(), Some(5));
+    assert_eq!(ring.pop_mut(), Some(6));
+}
+
+#[test]
+fn push_slice_exceeds_capacity() {
+    let sink = CollectSpout::new();
+    let mut ring = SpillRing::<u32, 4, _>::with_sink(sink);
+    ring.push_mut(100); // pre-fill with 1 item
+    ring.push_slice(&[1, 2, 3, 4, 5, 6, 7, 8]); // 8 items into cap-4 ring
+    // Ring had [100], slice is 8 items (> N=4).
+    // Phase 1: evict ring contents [100], send excess [1,2,3,4] to spout.
+    // Phase 2: keep=[5,6,7,8] fills ring exactly.
+    assert_eq!(ring.sink().items(), vec![100, 1, 2, 3, 4]);
+    assert_eq!(ring.len(), 4);
+    assert_eq!(ring.pop_mut(), Some(5));
+    assert_eq!(ring.pop_mut(), Some(6));
+    assert_eq!(ring.pop_mut(), Some(7));
+    assert_eq!(ring.pop_mut(), Some(8));
+}
+
+#[test]
+fn push_slice_wraparound() {
+    let mut ring: SpillRing<u32, 8> = SpillRing::new();
+    // Fill 6 items, pop 6 → head=6, tail=6 (near end of buffer)
+    ring.push_slice(&[0; 6]);
+    for _ in 0..6 {
+        let _ = ring.pop_mut();
+    }
+    // Now push 5 items starting at tail_idx=6: wraps around buffer end
+    ring.push_slice(&[10, 20, 30, 40, 50]);
+    assert_eq!(ring.len(), 5);
+    assert_eq!(ring.pop_mut(), Some(10));
+    assert_eq!(ring.pop_mut(), Some(20));
+    assert_eq!(ring.pop_mut(), Some(30));
+    assert_eq!(ring.pop_mut(), Some(40));
+    assert_eq!(ring.pop_mut(), Some(50));
+}
+
+#[test]
+fn push_slice_wraparound_with_eviction() {
+    let sink = CollectSpout::new();
+    let mut ring = SpillRing::<u32, 4, _>::with_sink(sink);
+    // Fill 3 items, pop 2 → head=2, tail=3, len=1 at slot[2]
+    ring.push_slice(&[0, 0, 99]);
+    let _ = ring.pop_mut(); // 0
+    let _ = ring.pop_mut(); // 0
+    // tail_idx=3, 1 item in ring (99 at slot[2]), 3 free
+    // Push 4 items: needs 4, free=3, evict 1 (the 99)
+    ring.push_slice(&[10, 20, 30, 40]);
+    assert_eq!(ring.sink().items(), vec![99]);
+    assert_eq!(ring.len(), 4);
+    // Items wrap: slot[3]=10, slot[0]=20, slot[1]=30, slot[2]=40
+    assert_eq!(ring.pop_mut(), Some(10));
+    assert_eq!(ring.pop_mut(), Some(20));
+    assert_eq!(ring.pop_mut(), Some(30));
+    assert_eq!(ring.pop_mut(), Some(40));
+}
+
+#[test]
+fn extend_from_slice_delegates() {
+    let mut ring: SpillRing<u32, 8> = SpillRing::new();
+    ring.extend_from_slice(&[1, 2, 3]);
+    assert_eq!(ring.len(), 3);
+    assert_eq!(ring.pop_mut(), Some(1));
+}
+
+// cache_line_layout test lives in ring.rs (needs private field access for offset_of!)

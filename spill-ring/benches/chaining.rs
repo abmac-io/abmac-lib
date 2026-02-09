@@ -1,44 +1,38 @@
-//! Ring chaining benchmarks.
+//! Ring chaining benchmarks — `push(&self)` path throughout.
 //!
-//! Compares single ring vs chained rings to measure the overhead
-//! of tiered buffering.
+//! Chained rings can only use `push(&self)` because the inner ring is owned
+//! by the outer ring's sink (no `&mut self` available). Single-ring baselines
+//! also use `push(&self)` so both sides go through the same atomic code path,
+//! making the comparison fair.
 //!
 //! NOTE: Chained rings must be recreated each iteration because inner rings
 //! are owned by the outer ring's sink — there's no way to reset the full
-//! chain without rebuilding it. Single-ring baselines are pre-warmed and
-//! reused via `clear()`.
-//!
-//! API improvement opportunity: a `reset()` method that recursively resets
-//! chained rings (clearing items at each level) would let us hoist chain
-//! construction outside the loop. This would require a `Reset` trait on
-//! `Spout` so each level can participate.
+//! chain without rebuilding it.
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use spill_ring::SpillRing;
 use spout::{BatchSpout, CollectSpout, DropSpout, ReduceSpout};
 use std::hint::black_box;
 
-/// Compare single ring vs chained rings - no overflow case.
+/// Compare single ring vs chained rings — no overflow case.
 /// When items stay in the first ring, chaining should have zero overhead.
 fn chaining_no_overflow(c: &mut Criterion) {
-    let mut group = c.benchmark_group("chaining_no_overflow");
+    let mut group = c.benchmark_group("chaining/push/no_overflow");
 
     let iterations = 1000u64;
     group.throughput(Throughput::Elements(iterations));
 
-    // Single ring, capacity 64 - push 32 items (no overflow) — pre-warmed
-    {
-        let mut ring: SpillRing<u64, 64> = SpillRing::new();
-        group.bench_function("single_ring_64", |b| {
-            b.iter(|| {
-                ring.clear();
-                for i in 0..32u64 {
-                    ring.push(black_box(i));
-                }
-                black_box(ring.len())
-            })
-        });
-    }
+    // Single ring, capacity 64 — push(&self) to match chained path
+    // Must recreate each iteration (no clear() through &self)
+    group.bench_function("single_ring_64", |b| {
+        b.iter(|| {
+            let ring: SpillRing<u64, 64> = SpillRing::new();
+            for i in 0..32u64 {
+                ring.push(black_box(i));
+            }
+            black_box(ring.len())
+        })
+    });
 
     // Chained: ring1(32) -> ring2(32) - push 32 items (no overflow from ring1)
     // Must recreate each iteration — inner ring owned by outer sink
@@ -56,27 +50,24 @@ fn chaining_no_overflow(c: &mut Criterion) {
     group.finish();
 }
 
-/// Compare single ring vs chained rings - with overflow.
+/// Compare single ring vs chained rings — with overflow.
 /// Measures the cost of cascading items through the chain.
 fn chaining_with_overflow(c: &mut Criterion) {
-    let mut group = c.benchmark_group("chaining_with_overflow");
+    let mut group = c.benchmark_group("chaining/push/with_overflow");
 
     let iterations = 10_000u64;
     group.throughput(Throughput::Elements(iterations));
 
-    // Single ring capacity 64, push 10k items — pre-warmed
-    {
-        let mut ring: SpillRing<u64, 64, DropSpout> = SpillRing::new();
-        group.bench_function("single_64_to_drop", |b| {
-            b.iter(|| {
-                ring.clear();
-                for i in 0..iterations {
-                    ring.push(black_box(i));
-                }
-                black_box(ring.len())
-            })
-        });
-    }
+    // Single ring capacity 64 — push(&self) to match chained path
+    group.bench_function("single_64_to_drop", |b| {
+        b.iter(|| {
+            let ring: SpillRing<u64, 64, DropSpout> = SpillRing::new();
+            for i in 0..iterations {
+                ring.push(black_box(i));
+            }
+            black_box(ring.len())
+        })
+    });
 
     // Chained: ring1(32) -> ring2(32) -> DropSpout, push 10k items
     group.bench_function("chained_32_32_to_drop", |b| {
@@ -106,14 +97,14 @@ fn chaining_with_overflow(c: &mut Criterion) {
     group.finish();
 }
 
-/// Chaining with collection - measure end-to-end with data preservation.
+/// Chaining with collection — measure end-to-end with data preservation.
 fn chaining_collect(c: &mut Criterion) {
-    let mut group = c.benchmark_group("chaining_collect");
+    let mut group = c.benchmark_group("chaining/push/collect");
 
     let iterations = 10_000u64;
     group.throughput(Throughput::Elements(iterations));
 
-    // Single ring -> CollectSpout (must recreate — sink accumulates)
+    // Single ring -> CollectSpout — push(&self) to match chained path
     group.bench_function("single_64_collect", |b| {
         b.iter(|| {
             let ring: SpillRing<u64, 64, _> = SpillRing::with_sink(CollectSpout::new());
@@ -139,26 +130,23 @@ fn chaining_collect(c: &mut Criterion) {
     group.finish();
 }
 
-/// Varying chain depths - how does overhead scale?
+/// Varying chain depths — how does overhead scale?
 fn chaining_depth(c: &mut Criterion) {
-    let mut group = c.benchmark_group("chaining_depth");
+    let mut group = c.benchmark_group("chaining/push/depth");
 
     let iterations = 10_000u64;
     group.throughput(Throughput::Elements(iterations));
 
-    // Depth 1: single ring — pre-warmed
-    {
-        let mut ring: SpillRing<u64, 64, DropSpout> = SpillRing::new();
-        group.bench_function("depth_1", |b| {
-            b.iter(|| {
-                ring.clear();
-                for i in 0..iterations {
-                    ring.push(black_box(i));
-                }
-                black_box(ring.len())
-            })
-        });
-    }
+    // Depth 1: single ring — push(&self) to match chained path
+    group.bench_function("depth_1", |b| {
+        b.iter(|| {
+            let ring: SpillRing<u64, 64, DropSpout> = SpillRing::new();
+            for i in 0..iterations {
+                ring.push(black_box(i));
+            }
+            black_box(ring.len())
+        })
+    });
 
     // Depth 2: ring -> ring -> drop
     group.bench_function("depth_2", |b| {
@@ -202,9 +190,9 @@ fn chaining_depth(c: &mut Criterion) {
     group.finish();
 }
 
-/// BatchSpout and ReduceSpout - cutting cascade overhead.
+/// BatchSpout and ReduceSpout — cutting cascade overhead.
 fn batch_reduce_sinks(c: &mut Criterion) {
-    let mut group = c.benchmark_group("batch_reduce_sinks");
+    let mut group = c.benchmark_group("chaining/push/batch_reduce");
 
     let iterations = 10_000u64;
     group.throughput(Throughput::Elements(iterations));
@@ -238,7 +226,7 @@ fn batch_reduce_sinks(c: &mut Criterion) {
         })
     });
 
-    // ReduceSpout - sum batches of 100
+    // ReduceSpout — sum batches of 100
     group.bench_function("reduce_sum_100", |b| {
         b.iter(|| {
             let collect: CollectSpout<u64> = CollectSpout::new();
@@ -252,7 +240,7 @@ fn batch_reduce_sinks(c: &mut Criterion) {
         })
     });
 
-    // ReduceSpout - count batches (lighter reduce function)
+    // ReduceSpout — count batches (lighter reduce function)
     group.bench_function("reduce_count_100", |b| {
         b.iter(|| {
             let collect: CollectSpout<usize> = CollectSpout::new();
@@ -266,7 +254,7 @@ fn batch_reduce_sinks(c: &mut Criterion) {
         })
     });
 
-    // BatchSpout alone - just batching overhead
+    // BatchSpout alone — just batching overhead
     group.bench_function("batch_only_100", |b| {
         b.iter(|| {
             let collect: CollectSpout<Vec<u64>> = CollectSpout::new();

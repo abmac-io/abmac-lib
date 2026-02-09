@@ -108,7 +108,7 @@ fn peek_impl<T, const N: usize, S: Spout<T>>(ring: &SpillRing<T, N, S>) -> Optio
     }
 
     Some(unsafe {
-        let slot = &ring.buffer[head % N];
+        let slot = &ring.buffer[head & (N - 1)];
         (*slot.data.get()).assume_init_ref()
     })
 }
@@ -122,7 +122,7 @@ fn peek_back_impl<T, const N: usize, S: Spout<T>>(ring: &SpillRing<T, N, S>) -> 
         return None;
     }
 
-    let idx = tail.wrapping_sub(1) % N;
+    let idx = tail.wrapping_sub(1) & (N - 1);
     Some(unsafe {
         let slot = &ring.buffer[idx];
         (*slot.data.get()).assume_init_ref()
@@ -139,7 +139,7 @@ fn get_impl<T, const N: usize, S: Spout<T>>(ring: &SpillRing<T, N, S>, index: us
         return None;
     }
 
-    let idx = head.wrapping_add(index) % N;
+    let idx = head.wrapping_add(index) & (N - 1);
     Some(unsafe {
         let slot = &ring.buffer[idx];
         (*slot.data.get()).assume_init_ref()

@@ -25,11 +25,7 @@ compio = { version = "0.17", features = ["macros"] }
 libc = "0.2"
 
 [[bench]]
-name = "throughput"
-harness = false
-
-[[bench]]
-name = "latency"
+name = "single_thread"
 harness = false
 
 [[bench]]
@@ -40,10 +36,7 @@ required-features = ["atomics"]
 [[bench]]
 name = "chaining"
 harness = false
-
-[[bench]]
-name = "comparison"
-harness = false
+required-features = ["atomics"]
 
 [[bench]]
 name = "mpsc"
