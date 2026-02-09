@@ -305,9 +305,69 @@ pub fn collect<T, const N: usize, S: Spout<T>>(
 mod worker_pool {
     use super::{Consumer, DropSpout, SpillRing, Spout, Vec};
     use core::marker::PhantomData;
-    use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
-    use std::sync::{Arc, Barrier};
+    use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+    use std::sync::Arc;
     use std::thread;
+
+    /// Spin-barrier for low-latency thread synchronization.
+    ///
+    /// Unlike `std::sync::Barrier` (Mutex + Condvar), this spins on atomics
+    /// with no OS syscalls. Eliminates the ~58µs overhead at 8 threads that
+    /// dominates short work units.
+    struct SpinBarrier {
+        count: AtomicUsize,
+        generation: AtomicUsize,
+        num_threads: usize,
+        /// Spin iterations before yielding. Scaled to hardware at construction:
+        /// when threads <= available cores, spin longer (no contention for CPU);
+        /// when oversubscribed, yield immediately to avoid starvation.
+        spin_limit: u32,
+    }
+
+    impl SpinBarrier {
+        fn new(num_threads: usize) -> Self {
+            let cores = thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1);
+            // Oversubscribed: yield immediately. Otherwise spin proportional
+            // to headroom — more spare cores means less risk of starving.
+            let spin_limit = if num_threads > cores {
+                0
+            } else {
+                // 32 spins per spare core, capped at 256. Each PAUSE is ~5ns
+                // on x86, so 256 spins ≈ 1.3µs — well under a scheduler tick.
+                ((cores - num_threads + 1) as u32 * 32).min(256)
+            };
+
+            Self {
+                count: AtomicUsize::new(0),
+                generation: AtomicUsize::new(0),
+                num_threads,
+                spin_limit,
+            }
+        }
+
+        fn wait(&self) {
+            let epoch = self.generation.load(Ordering::Relaxed);
+
+            if self.count.fetch_add(1, Ordering::AcqRel) + 1 == self.num_threads {
+                // Last thread to arrive — reset count and advance generation.
+                self.count.store(0, Ordering::Relaxed);
+                self.generation
+                    .store(epoch.wrapping_add(1), Ordering::Release);
+            } else {
+                let mut spins = 0u32;
+                while self.generation.load(Ordering::Acquire) == epoch {
+                    if spins < self.spin_limit {
+                        std::hint::spin_loop();
+                        spins += 1;
+                    } else {
+                        thread::yield_now();
+                    }
+                }
+            }
+        }
+    }
 
     /// Builder for constructing a [`WorkerPool`].
     ///
@@ -392,8 +452,8 @@ mod worker_pool {
         handles: Vec<Option<thread::JoinHandle<SpillRing<T, N, S>>>>,
         args_ptr: Arc<AtomicPtr<A>>,
         shutdown: Arc<AtomicBool>,
-        start_barrier: Arc<Barrier>,
-        done_barrier: Arc<Barrier>,
+        start_barrier: Arc<SpinBarrier>,
+        done_barrier: Arc<SpinBarrier>,
         _marker: PhantomData<F>,
     }
 
@@ -405,9 +465,9 @@ mod worker_pool {
         A: Sync + 'static,
     {
         fn start(num_workers: usize, sink: S, work: F) -> Self {
-            let ready_barrier = Arc::new(Barrier::new(num_workers + 1));
-            let start_barrier = Arc::new(Barrier::new(num_workers + 1));
-            let done_barrier = Arc::new(Barrier::new(num_workers + 1));
+            let ready_barrier = Arc::new(SpinBarrier::new(num_workers + 1));
+            let start_barrier = Arc::new(SpinBarrier::new(num_workers + 1));
+            let done_barrier = Arc::new(SpinBarrier::new(num_workers + 1));
             let shutdown = Arc::new(AtomicBool::new(false));
             let args_ptr: Arc<AtomicPtr<A>> = Arc::new(AtomicPtr::new(core::ptr::null_mut()));
 
