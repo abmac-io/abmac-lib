@@ -872,6 +872,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "verdict"
+version = "0.1.0"
+dependencies = [
+ "bytecast",
+ "facet",
+ "facet-json",
+ "serde",
+ "serde_json",
+ "spout",
+]
+
+[[package]]
 name = "walkdir"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

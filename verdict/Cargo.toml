@@ -1,0 +1,49 @@
+[package]
+name = "verdict"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/abmac-io/abmac-lib"
+description = "Typestate-driven error handling with compile-time status tracking and composable overflow sinks"
+keywords = ["error", "typestate", "no_std", "retry", "actionable"]
+categories = ["rust-patterns", "no-std"]
+readme = "README.md"
+
+[features]
+default = ["std"]
+std = ["alloc", "spout/std"]
+alloc = ["dep:spout"]
+bytecast = ["dep:bytecast", "alloc"]
+serde = ["bytecast", "bytecast/serde", "dep:serde"]
+facet = ["bytecast", "bytecast/facet", "dep:facet"]
+
+[dependencies]
+spout = { version = "1.0.0-rc.1", path = "../spout", default-features = false, optional = true }
+bytecast = { path = "../bytecast", default-features = false, features = ["derive", "alloc"], optional = true }
+serde = { version = "1", default-features = false, features = ["derive"], optional = true }
+facet = { version = "0.43", default-features = false, features = ["alloc"], optional = true }
+
+[[example]]
+name = "basic"
+required-features = ["std"]
+
+[[example]]
+name = "retry"
+required-features = ["std"]
+
+[[example]]
+name = "bounded"
+required-features = ["std"]
+
+[[example]]
+name = "serde_json"
+required-features = ["std", "serde"]
+
+[[example]]
+name = "facet_json"
+required-features = ["std", "facet"]
+
+[dev-dependencies]
+serde_json = "1"
+facet-json = "0.43"
