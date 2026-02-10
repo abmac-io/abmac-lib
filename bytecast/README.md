@@ -45,7 +45,7 @@ Optional bridges let bytecast-serialized data flow through other serialization f
 | Feature  | Description |
 |----------|-------------|
 | `alloc`  | Enables `Vec<T>`, `String`, `VecDeque<T>`, and `Cow` support |
-| `std`    | Enables `std` and full zerocopy std support (implies `alloc`) |
+| `std`    | Enables `HashMap`, `HashSet`, and full zerocopy std support (implies `alloc`) |
 | `derive` | Enables `DeriveToBytes` and `DeriveFromBytes` proc macros |
 | `serde`  | Enables `BytecastSerde<T>` bridge (implies `alloc`) |
 | `facet`  | Enables `BytecastFacet` bridge (implies `alloc`) |
@@ -74,13 +74,22 @@ Optional bridges let bytecast-serialized data flow through other serialization f
 | `()` | 0 bytes | - |
 | `[T; N]` | `N * size_of::<T>()` | - |
 | `Option<T>` | 1 byte discriminant + payload | - |
+| `Result<T, E>` | 1 byte discriminant + payload | - |
 | `(A, B, ...)` | Elements in order (arity 1-12) | - |
+| `Range<T>` | start + end | - |
+| `RangeInclusive<T>` | start + end | - |
+| `NonZeroU8/16/32/64/128` | Same as inner type (validated) | - |
+| `NonZeroI8/16/32/64/128` | Same as inner type (validated) | - |
 | `#[repr(C)]` structs | Size of struct | - |
 | `Vec<T>` | Varint length + elements | `alloc` |
 | `VecDeque<T>` | Varint length + elements | `alloc` |
 | `String` | Varint length + UTF-8 bytes | `alloc` |
 | `Cow<'_, str>` | Varint length + UTF-8 bytes | `alloc` |
 | `Cow<'_, [T]>` | Varint length + elements | `alloc` |
+| `BTreeMap<K, V>` | Varint length + key-value pairs | `alloc` |
+| `BTreeSet<T>` | Varint length + elements | `alloc` |
+| `HashMap<K, V>` | Varint length + key-value pairs | `std` |
+| `HashSet<T>` | Varint length + elements | `std` |
 
 ## License
 
