@@ -348,7 +348,7 @@ fn extend_with_overflow_evicts() {
     assert_eq!(ring.pop(), Some(6));
 }
 
-// ── push_slice tests ──────────────────────────────────────────────────
+// push_slice tests
 
 #[test]
 fn push_slice_empty() {
@@ -464,7 +464,7 @@ fn extend_from_slice_delegates() {
     assert_eq!(ring.pop_mut(), Some(1));
 }
 
-// ── pop_slice tests ──────────────────────────────────────────────────
+// pop_slice tests
 
 #[test]
 fn pop_slice_empty() {
@@ -536,7 +536,7 @@ fn pop_slice_empty_buf() {
     assert_eq!(ring.len(), 3);
 }
 
-// ── Builder tests ────────────────────────────────────────────────────
+// Builder tests
 
 #[test]
 fn spill_ring_builder_default() {
@@ -573,24 +573,3 @@ fn spill_ring_builder_cold_with_sink() {
     ring.push(1);
     assert_eq!(ring.pop(), Some(1));
 }
-
-#[test]
-fn spsc_ring_builder_default() {
-    use crate::SpscRing;
-    let mut ring = SpscRing::<u64, 16>::builder().build();
-    assert!(ring.is_empty());
-    assert_eq!(ring.capacity(), 16);
-    ring.push_mut(42);
-    assert_eq!(ring.pop_mut(), Some(42));
-}
-
-#[test]
-fn spsc_ring_builder_cold() {
-    use crate::SpscRing;
-    let mut ring = SpscRing::<u64, 16>::builder().cold().build();
-    assert!(ring.is_empty());
-    ring.push_mut(1);
-    assert_eq!(ring.pop_mut(), Some(1));
-}
-
-// cache_line_layout test lives in ring.rs (needs private field access for offset_of!)

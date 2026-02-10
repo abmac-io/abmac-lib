@@ -16,8 +16,9 @@ fn ring_producer_trait() {
     // is_full
     assert!(RingInfo::is_full(&ring));
 
-    // try_push when full returns Err
-    assert_eq!(RingProducer::try_push(&mut ring, 5), Err(5));
+    // try_push when full returns Err(PushError::Full)
+    let err = RingProducer::try_push(&mut ring, 5).unwrap_err();
+    assert_eq!(err.into_inner(), 5);
 
     // capacity, len, is_empty (from RingInfo)
     assert_eq!(RingInfo::capacity(&ring), 4);

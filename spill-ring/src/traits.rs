@@ -27,9 +27,10 @@ pub trait RingInfo {
 pub trait RingProducer<T>: RingInfo {
     /// Attempts to push an item into the ring.
     ///
-    /// # Errors:
-    /// Returns `Ok(())` if successful, or `Err(item)` if the ring is full.
-    fn try_push(&mut self, item: T) -> Result<(), T>;
+    /// # Errors
+    /// Returns `Ok(())` if successful, or `Err(PushError::Full(item))` if
+    /// the ring is full.
+    fn try_push(&mut self, item: T) -> Result<(), crate::PushError<T>>;
 }
 
 /// Consumer side of a ring buffer.

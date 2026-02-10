@@ -14,9 +14,11 @@ categories = ["data-structures", "no-std", "embedded"]
 [features]
 default = []
 std = ["spout/std"]
+verdict = ["dep:verdict"]
 
 [dependencies]
 spout = { workspace = true }
+verdict = { path = "../verdict", default-features = false, optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
@@ -26,21 +28,12 @@ name = "single_thread"
 harness = false
 
 [[bench]]
-name = "spsc"
-harness = false
-required-features = ["std"]
-
-[[bench]]
 name = "chaining"
 harness = false
 
 [[bench]]
 name = "mpsc"
 harness = false
-required-features = ["std"]
-
-[[example]]
-name = "spsc"
 required-features = ["std"]
 
 [[example]]
