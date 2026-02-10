@@ -14,11 +14,44 @@ categories = ["encoding", "no-std", "embedded"]
 [dependencies]
 bytecast-macros = { path = "../bytecast-macros", optional = true }
 zerocopy = { version = "0.8", default-features = false }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
+base64 = { version = "0.22", default-features = false, features = ["alloc"], optional = true }
+facet = { version = "0.43", default-features = false, features = ["alloc"], optional = true }
+rkyv = { version = "0.8", default-features = false, features = ["alloc"], optional = true }
 
 [dev-dependencies]
 zerocopy = { version = "0.8", features = ["derive"] }
+serde_json = "1"
+facet-json = "0.43"
+rkyv = { version = "0.8", features = ["bytecheck"] }
 
 [features]
 std = ["alloc", "zerocopy/std"]
 alloc = ["zerocopy/alloc"]
 derive = ["dep:bytecast-macros"]
+serde = ["dep:serde", "dep:base64", "alloc"]
+facet = ["dep:facet", "dep:base64", "alloc"]
+rkyv = ["dep:rkyv", "alloc"]
+
+[[example]]
+name = "derive"
+required-features = ["derive", "alloc"]
+
+[[example]]
+name = "alloc"
+required-features = ["alloc"]
+
+[[example]]
+name = "custom_struct"
+
+[[example]]
+name = "serde_bridge"
+required-features = ["derive", "serde"]
+
+[[example]]
+name = "facet_bridge"
+required-features = ["derive", "facet"]
+
+[[example]]
+name = "rkyv_bridge"
+required-features = ["derive", "rkyv"]

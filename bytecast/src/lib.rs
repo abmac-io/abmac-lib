@@ -30,5 +30,17 @@ pub use bytecast_macros::{FromBytes as DeriveFromBytes, ToBytes as DeriveToBytes
 #[cfg(feature = "alloc")]
 pub use serializer::{ByteCursor, ByteReader, ByteSerializer};
 
+#[cfg(any(feature = "serde", feature = "facet", feature = "rkyv"))]
+pub mod bridges;
+
+#[cfg(feature = "serde")]
+pub use bridges::BytecastSerde;
+
+#[cfg(feature = "facet")]
+pub use bridges::BytecastFacet;
+
+#[cfg(feature = "rkyv")]
+pub use bridges::BytecastRkyv;
+
 #[cfg(test)]
 mod tests;
