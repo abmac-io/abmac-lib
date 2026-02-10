@@ -13,7 +13,8 @@ categories = ["data-structures", "no-std", "embedded"]
 
 [features]
 default = []
-std = ["spout/std"]
+alloc = []
+std = ["alloc", "spout/std"]
 verdict = ["dep:verdict"]
 
 [dependencies]
