@@ -328,6 +328,81 @@ fn test_derive_repr_u16_enum() {
 }
 
 // =============================================================================
+// boxed field tests
+// =============================================================================
+
+#[derive(DeriveToBytes, DeriveFromBytes, Debug, PartialEq)]
+struct BoxedNamed {
+    id: u16,
+    #[bytecast(boxed)]
+    value: Box<u32>,
+}
+
+#[derive(DeriveToBytes, DeriveFromBytes, Debug, PartialEq)]
+struct BoxedTuple(u8, #[bytecast(boxed)] Box<u32>);
+
+#[test]
+fn test_boxed_named_roundtrip() {
+    let original = BoxedNamed {
+        id: 1,
+        value: Box::new(0x12345678),
+    };
+    let mut buf = [0u8; 64];
+    let written = original.to_bytes(&mut buf).unwrap();
+    assert_eq!(written, 6); // 2 + 4
+
+    let (decoded, consumed) = BoxedNamed::from_bytes(&buf).unwrap();
+    assert_eq!(consumed, 6);
+    assert_eq!(decoded, original);
+}
+
+#[test]
+fn test_boxed_tuple_roundtrip() {
+    let original = BoxedTuple(42, Box::new(0xDEADBEEF));
+    let mut buf = [0u8; 64];
+    let written = original.to_bytes(&mut buf).unwrap();
+    assert_eq!(written, 5); // 1 + 4
+
+    let (decoded, consumed) = BoxedTuple::from_bytes(&buf).unwrap();
+    assert_eq!(consumed, 5);
+    assert_eq!(decoded, original);
+}
+
+#[test]
+fn test_boxed_max_size() {
+    assert_eq!(BoxedNamed::MAX_SIZE, Some(6));
+    assert_eq!(BoxedTuple::MAX_SIZE, Some(5));
+}
+
+// =============================================================================
+// PhantomData auto-skip tests
+// =============================================================================
+
+use core::marker::PhantomData;
+
+#[derive(DeriveToBytes, DeriveFromBytes, Debug, PartialEq)]
+struct WithPhantom<T> {
+    id: u32,
+    _marker: PhantomData<T>,
+}
+
+#[test]
+fn test_phantom_data_auto_skip() {
+    let original = WithPhantom::<String> {
+        id: 42,
+        _marker: PhantomData,
+    };
+    let mut buf = [0u8; 4];
+    let written = original.to_bytes(&mut buf).unwrap();
+    assert_eq!(written, 4);
+
+    let (decoded, consumed) = WithPhantom::<String>::from_bytes(&buf).unwrap();
+    assert_eq!(consumed, 4);
+    assert_eq!(decoded, original);
+    assert_eq!(WithPhantom::<String>::MAX_SIZE, Some(4));
+}
+
+// =============================================================================
 // byte_len tests
 // =============================================================================
 

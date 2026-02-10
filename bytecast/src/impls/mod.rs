@@ -162,6 +162,80 @@ impl<T: FromBytes> FromBytes for Option<T> {
     }
 }
 
+// Result<T, E> - discriminant + variable payload (same pattern as Option)
+const fn max_of(a: Option<usize>, b: Option<usize>) -> Option<usize> {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            if a > b {
+                Some(a)
+            } else {
+                Some(b)
+            }
+        }
+        _ => None,
+    }
+}
+
+impl<T: ToBytes, E: ToBytes> ToBytes for Result<T, E> {
+    const MAX_SIZE: Option<usize> = match max_of(T::MAX_SIZE, E::MAX_SIZE) {
+        Some(s) => Some(1 + s),
+        None => None,
+    };
+
+    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, BytesError> {
+        if buf.is_empty() {
+            return Err(BytesError::BufferTooSmall {
+                needed: 1,
+                available: 0,
+            });
+        }
+        match self {
+            Ok(v) => {
+                buf[0] = 0;
+                let n = v.to_bytes(&mut buf[1..])?;
+                Ok(1 + n)
+            }
+            Err(e) => {
+                buf[0] = 1;
+                let n = e.to_bytes(&mut buf[1..])?;
+                Ok(1 + n)
+            }
+        }
+    }
+
+    fn byte_len(&self) -> Option<usize> {
+        let inner = match self {
+            Ok(v) => v.byte_len()?,
+            Err(e) => e.byte_len()?,
+        };
+        Some(1 + inner)
+    }
+}
+
+impl<T: FromBytes, E: FromBytes> FromBytes for Result<T, E> {
+    fn from_bytes(buf: &[u8]) -> core::result::Result<(Self, usize), BytesError> {
+        if buf.is_empty() {
+            return Err(BytesError::UnexpectedEof {
+                needed: 1,
+                available: 0,
+            });
+        }
+        match buf[0] {
+            0 => {
+                let (v, n) = T::from_bytes(&buf[1..])?;
+                Ok((Ok(v), 1 + n))
+            }
+            1 => {
+                let (e, n) = E::from_bytes(&buf[1..])?;
+                Ok((Err(e), 1 + n))
+            }
+            _ => Err(BytesError::InvalidData {
+                message: "Result discriminant must be 0 or 1",
+            }),
+        }
+    }
+}
+
 // ViewBytes implementations for zero-copy views
 impl<'a> ViewBytes<'a> for &'a [u8] {
     fn view(bytes: &'a [u8]) -> Result<Self, BytesError> {
