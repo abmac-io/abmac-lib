@@ -424,3 +424,14 @@ fn test_vecdeque_wire_compat_with_vec() {
     assert_eq!(n_v, n_d);
     assert_eq!(&buf_v[..n_v], &buf_d[..n_d]);
 }
+
+#[test]
+fn test_tuple_mixed() {
+    let value: (u32, String) = (42, String::from("hello"));
+
+    let bytes = ToBytesExt::to_vec(&value).unwrap();
+    let (decoded, _) = <(u32, String)>::from_bytes(&bytes).unwrap();
+    assert_eq!(decoded, value);
+
+    assert_eq!(<(u32, String)>::MAX_SIZE, None);
+}

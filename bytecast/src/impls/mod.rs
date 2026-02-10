@@ -9,6 +9,7 @@
 #[cfg(feature = "alloc")]
 pub mod alloc;
 
+pub mod tuple;
 pub mod wrapper;
 
 use crate::{BytesError, FromBytes, ToBytes, ViewBytes};

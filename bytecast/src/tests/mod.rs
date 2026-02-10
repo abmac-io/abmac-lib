@@ -282,6 +282,51 @@ fn test_array_roundtrip() {
     assert_eq!(consumed, 16);
 }
 
+// Tuple tests
+#[test]
+fn test_tuple_fixed() {
+    let mut buf = [0u8; 5];
+    let value: (u32, u8) = (0x12345678, 42);
+
+    let written = value.to_bytes(&mut buf).unwrap();
+    assert_eq!(written, 5);
+
+    let (decoded, consumed) = <(u32, u8)>::from_bytes(&buf).unwrap();
+    assert_eq!(decoded, value);
+    assert_eq!(consumed, 5);
+
+    assert_eq!(<(u32, u8)>::MAX_SIZE, Some(5));
+    assert_eq!(value.byte_len(), Some(5));
+}
+
+#[test]
+fn test_tuple_single() {
+    let mut buf = [0u8; 4];
+    let value: (u32,) = (99,);
+
+    let written = value.to_bytes(&mut buf).unwrap();
+    assert_eq!(written, 4);
+
+    let (decoded, consumed) = <(u32,)>::from_bytes(&buf).unwrap();
+    assert_eq!(decoded, value);
+    assert_eq!(consumed, 4);
+}
+
+#[test]
+fn test_tuple_arity_12() {
+    let mut buf = [0u8; 12];
+    let value: (u8, u8, u8, u8, u8, u8, u8, u8, u8, u8, u8, u8) =
+        (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
+
+    let written = value.to_bytes(&mut buf).unwrap();
+    assert_eq!(written, 12);
+
+    let (decoded, consumed) =
+        <(u8, u8, u8, u8, u8, u8, u8, u8, u8, u8, u8, u8)>::from_bytes(&buf).unwrap();
+    assert_eq!(decoded, value);
+    assert_eq!(consumed, 12);
+}
+
 // ViewBytes tests
 #[test]
 fn test_view_bytes_slice() {
