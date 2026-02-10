@@ -32,8 +32,8 @@ pub(crate) const MAX_CAPACITY: usize = 1 << 20;
 
 /// Ring buffer that spills evicted items to a spout.
 ///
-/// Single-threaded ring using `Cell`-based indices. Not `Sync` — for concurrent
-/// SPSC use, see [`SpscRing`](crate::SpscRing).
+/// Single-threaded ring using `Cell`-based indices. For multi-threaded use,
+/// see [`MpscRing`](crate::MpscRing).
 #[repr(C)]
 pub struct SpillRing<T, const N: usize, S: Spout<T> = DropSpout> {
     pub(crate) head: CellIndex,
@@ -127,8 +127,7 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
 
     /// Push an item. If full, evicts oldest to spout.
     ///
-    /// Uses interior mutability (`Cell`). Not thread-safe — for concurrent
-    /// SPSC use, see [`SpscRing::push`](crate::SpscRing::push).
+    /// Uses interior mutability (`Cell`). Not thread-safe.
     #[inline]
     pub fn push(&self, item: T) {
         let tail = self.tail.load();
@@ -337,8 +336,7 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
 
     /// Pop the oldest item.
     ///
-    /// Uses interior mutability (`Cell`). Not thread-safe — for concurrent
-    /// SPSC use, see [`SpscRing::pop`](crate::SpscRing::pop).
+    /// Uses interior mutability (`Cell`). Not thread-safe.
     #[inline]
     #[must_use]
     pub fn pop(&self) -> Option<T> {

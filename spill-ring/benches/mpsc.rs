@@ -13,7 +13,7 @@ use std::hint::black_box;
 fn mpsc_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("mpsc_throughput");
 
-    for num_workers in [1, 2, 4, 8] {
+    for num_workers in [1, 2, 4, 6, 8] {
         let iterations_per_worker = 100_000u64;
         let total = iterations_per_worker * num_workers as u64;
         group.throughput(Throughput::Elements(total));
@@ -41,7 +41,7 @@ fn mpsc_throughput(c: &mut Criterion) {
 fn mpsc_full_cycle(c: &mut Criterion) {
     let mut group = c.benchmark_group("mpsc_full_cycle");
 
-    for num_workers in [1, 2, 4, 8] {
+    for num_workers in [1, 2, 4, 6, 8] {
         let iterations_per_worker = 50_000u64;
         let total = iterations_per_worker * num_workers as u64;
         group.throughput(Throughput::Elements(total));
@@ -108,7 +108,7 @@ fn mpsc_scaling(c: &mut Criterion) {
 
     let total_items = 400_000u64;
 
-    for num_workers in [1, 2, 4, 8] {
+    for num_workers in [1, 2, 4, 6, 8] {
         let per_worker = total_items / num_workers as u64;
         group.throughput(Throughput::Elements(total_items));
 

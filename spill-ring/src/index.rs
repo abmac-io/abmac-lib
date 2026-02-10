@@ -1,8 +1,8 @@
-//! Index abstractions for atomic and non-atomic access.
+//! Index and cell abstractions for ring buffer internals.
 
 use core::cell::UnsafeCell;
 
-// ── SpoutCell (shared between SpillRing and SpscRing) ─────────────────
+// SpoutCell
 
 /// Interior mutable cell for spout.
 #[repr(transparent)]
@@ -36,54 +36,7 @@ impl<S> SpoutCell<S> {
 unsafe impl<S: Send> Send for SpoutCell<S> {}
 unsafe impl<S: Send> Sync for SpoutCell<S> {}
 
-// ── AtomicIndex (for SpscRing) ────────────────────────────────────────
-
-mod atomic {
-    use core::sync::atomic::{AtomicUsize, Ordering};
-
-    /// Atomic index using Acquire/Release ordering.
-    #[repr(transparent)]
-    pub(crate) struct AtomicIndex(AtomicUsize);
-
-    impl AtomicIndex {
-        #[inline]
-        pub const fn new(val: usize) -> Self {
-            Self(AtomicUsize::new(val))
-        }
-
-        /// Load with Acquire ordering.
-        #[inline]
-        pub fn load(&self) -> usize {
-            self.0.load(Ordering::Acquire)
-        }
-
-        /// Load with Relaxed ordering (for reading own index).
-        #[inline]
-        pub fn load_relaxed(&self) -> usize {
-            self.0.load(Ordering::Relaxed)
-        }
-
-        /// Store with Release ordering.
-        #[inline]
-        pub fn store(&self, val: usize) {
-            self.0.store(val, Ordering::Release);
-        }
-
-        /// Load without atomics (exclusive access).
-        #[inline]
-        pub fn load_mut(&mut self) -> usize {
-            *self.0.get_mut()
-        }
-
-        /// Store without atomics (exclusive access).
-        #[inline]
-        pub fn store_mut(&mut self, val: usize) {
-            *self.0.get_mut() = val;
-        }
-    }
-}
-
-// ── CellIndex (for SpillRing) ─────────────────────────────────────────
+// CellIndex
 
 mod non_atomic {
     use core::cell::Cell;
@@ -122,5 +75,4 @@ mod non_atomic {
     }
 }
 
-pub(crate) use atomic::AtomicIndex;
 pub(crate) use non_atomic::CellIndex;
