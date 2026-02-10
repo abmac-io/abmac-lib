@@ -4,7 +4,7 @@ A fixed-capacity ring buffer that spills evicted items to a configurable spout o
 
 ## Why Spill-Ring
 
-Bounded buffers usually force a choice: block when full, drop new items, or drop old items. Spill-Ring evicts the oldest item to a *spout* rather than silently dropping it. This preserves all data while maintaining bounded memory. If no spout is configured, evicted items are dropped as expected.
+Bounded buffers usually force a choice: block when full, drop new items, or drop old items. Spill-Ring evicts the oldest item to a [Spout](../spout) rather than silently dropping it. This preserves all data while maintaining bounded memory. If no spout is configured, evicted items are dropped as expected.
 
 ## Ring Types
 
@@ -62,7 +62,8 @@ assert_eq!(ring.pop(), Some(2));
 
 | Feature   | Description |
 |-----------|-------------|
-| `std`     | Enables `WorkerPool`, `PoolBuilder` (implies `spout/std`) |
+| `alloc`   | Enables `MpscRing`, `Producer`, `Consumer`, `collect` |
+| `std`     | Enables `WorkerPool`, `PoolBuilder` (implies `alloc`, `spout/std`) |
 | `verdict` | Adds `Actionable` impl on `PushError` — classifies `Full` as `Temporary` (retryable) |
 
 ## Capacity Constraints
@@ -73,11 +74,12 @@ assert_eq!(ring.pop(), Some(2));
 
 ## Performance
 
-| Ring | Access | Throughput | Notes |
-|------|--------|------------|-------|
-| SpillRing | `&self` | ~1.8 Gelem/s | Interior mutability via Cell, used by ring chaining |
-| SpillRing | `&mut self` | ~1.4 Gelem/s | Exclusive access, no Cell overhead |
-| VecDeque (manual eviction) | — | ~758 Melem/s | stdlib baseline for comparison |
+Benchmarked vs `std::collections::VecDeque`, with manual eviction (~758 Melem/s).
+
+| Ring | Access | Throughput | vs VecDeque |
+|------|--------|------------|-------------|
+| SpillRing | `&self` | ~1.8 Gelem/s | ~2.4x | 
+| SpillRing | `&mut self` | ~1.4 Gelem/s | ~1.8x |
 
 **WorkerPool scaling** (AMD Ryzen 9 7950X, 8 cores):
 

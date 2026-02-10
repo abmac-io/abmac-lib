@@ -7,6 +7,7 @@ mod builder;
 mod error;
 mod index;
 mod iter;
+#[cfg(feature = "alloc")]
 mod mpsc;
 mod read;
 mod ring;
@@ -18,6 +19,7 @@ mod tests;
 pub use builder::SpillRingBuilder;
 pub use error::PushError;
 pub use iter::{SpillRingIter, SpillRingIterMut};
+#[cfg(feature = "alloc")]
 pub use mpsc::{Consumer, MpscRing, Producer, collect};
 #[cfg(feature = "std")]
 pub use mpsc::{PoolBuilder, WorkerPool};
