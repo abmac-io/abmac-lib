@@ -26,6 +26,12 @@ pub struct WarmCache<T: Checkpointable> {
     counter: u64,
 }
 
+impl<T: Checkpointable> Default for WarmCache<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Checkpointable> WarmCache<T> {
     /// Create a warm cache with the default capacity (64).
     pub fn new() -> Self {

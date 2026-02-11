@@ -48,6 +48,7 @@ where
     pub(super) warm: W,
     pub(super) checkpoints_added: u64,
     pub(super) io_operations: u64,
+    pub(super) branches: Option<super::branch::BranchTracker<T::Id>>,
     #[cfg(debug_assertions)]
     pub(super) game: crate::game::PebbleGame<T::Id>,
 }
@@ -79,6 +80,7 @@ where
             warm,
             checkpoints_added: 0,
             io_operations: 0,
+            branches: None,
             #[cfg(debug_assertions)]
             game: crate::game::PebbleGame::new(hot_capacity),
         }
@@ -105,6 +107,14 @@ where
         // Add to fast memory
         self.red_pebbles.insert(state_id, checkpoint);
         self.checkpoints_added = self.checkpoints_added.saturating_add(1);
+
+        if let Some(ref mut tracker) = self.branches {
+            let active = tracker.active();
+            tracker.assign(state_id, active);
+            if let Some(info) = tracker.info_mut(active) {
+                info.head = Some(state_id);
+            }
+        }
 
         #[cfg(debug_assertions)]
         {
@@ -137,6 +147,14 @@ where
         // Add to fast memory
         self.red_pebbles.insert(state_id, checkpoint);
         self.checkpoints_added = self.checkpoints_added.saturating_add(1);
+
+        if let Some(ref mut tracker) = self.branches {
+            let active = tracker.active();
+            tracker.assign(state_id, active);
+            if let Some(info) = tracker.info_mut(active) {
+                info.head = Some(state_id);
+            }
+        }
 
         #[cfg(debug_assertions)]
         {
@@ -429,6 +447,9 @@ where
     pub fn remove(&mut self, state_id: T::Id) -> bool {
         if self.red_pebbles.remove(&state_id).is_some() {
             self.dag.remove_node(state_id);
+            if let Some(ref mut tracker) = self.branches {
+                tracker.remove_checkpoint(state_id);
+            }
             #[cfg(debug_assertions)]
             {
                 self.game.remove_node(state_id);
@@ -439,11 +460,17 @@ where
 
         if self.warm.remove(state_id).is_some() {
             self.dag.remove_node(state_id);
+            if let Some(ref mut tracker) = self.branches {
+                tracker.remove_checkpoint(state_id);
+            }
             return true;
         }
 
         if self.blue_pebbles.remove(&state_id) {
             self.dag.remove_node(state_id);
+            if let Some(ref mut tracker) = self.branches {
+                tracker.remove_checkpoint(state_id);
+            }
             #[cfg(debug_assertions)]
             {
                 self.game.remove_node(state_id);

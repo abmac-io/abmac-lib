@@ -539,15 +539,15 @@ fn test_recover_with_dependencies() {
     assert_eq!(recovered_manager.len(), in_storage);
 }
 
-// Spill-ring warm tier integration
+// Cold-buffer tier integration
 
-#[cfg(feature = "spill-ring")]
-mod spill_ring {
+#[cfg(feature = "cold-buffer")]
+mod cold_buffer {
     use super::*;
     use crate::manager::{RingCold, WarmCache};
     use crate::storage::RecoverableStorage;
 
-    /// Helper: create a RingCold + WarmCache manager for spill-ring tests.
+    /// Helper: create a RingCold + WarmCache manager for cold-buffer tests.
     fn test_spill_manager(
         hot_capacity: usize,
     ) -> PebbleManager<
@@ -890,7 +890,7 @@ fn hint_total_checkpoints_computes_sqrt() {
     assert!(manager.stats().blue_pebble_count > 0 || manager.stats().red_pebble_count <= 100);
 }
 
-#[cfg(feature = "spill-ring")]
+#[cfg(feature = "cold-buffer")]
 #[test]
 fn builder_warm_capacity_configurable() {
     use crate::manager::{PebbleManagerBuilder, RingCold, WarmCache};

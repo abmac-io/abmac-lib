@@ -1,18 +1,18 @@
 //! Cold-tier storage trait and implementations.
 
 mod direct;
-#[cfg(feature = "spill-ring-std")]
+#[cfg(feature = "cold-buffer-std")]
 mod parallel;
-#[cfg(feature = "spill-ring")]
+#[cfg(feature = "cold-buffer")]
 mod ring;
 
 use super::traits::Checkpointable;
 use crate::storage::{CheckpointMetadata, SessionId};
 
 pub use direct::{DirectStorage, DirectStorageError};
-#[cfg(feature = "spill-ring-std")]
+#[cfg(feature = "cold-buffer-std")]
 pub use parallel::ParallelCold;
-#[cfg(feature = "spill-ring")]
+#[cfg(feature = "cold-buffer")]
 pub use ring::RingCold;
 
 /// Cold-side storage abstraction.
@@ -23,8 +23,8 @@ pub use ring::RingCold;
 ///
 /// Three implementations:
 /// - [`DirectStorage`] — serialize and send immediately, no buffering (always available)
-/// - [`RingCold`] — serialize into a SpillRing (requires `spill-ring`)
-/// - [`ParallelCold`] — serialize across a WorkerPool (requires `spill-ring-std`)
+/// - [`RingCold`] — serialize into a SpillRing (requires `cold-buffer`)
+/// - [`ParallelCold`] — serialize across a WorkerPool (requires `cold-buffer-std`)
 pub trait ColdTier<T: Checkpointable> {
     /// Error type for storage operations.
     type Error: core::fmt::Debug + core::fmt::Display;

@@ -1,12 +1,10 @@
 //! Warm-tier eviction buffer trait and implementations.
 
-#[cfg(feature = "spill-ring")]
 mod cache;
 mod none;
 
 use super::traits::Checkpointable;
 
-#[cfg(feature = "spill-ring")]
 pub use cache::WarmCache;
 pub use none::NoWarm;
 
@@ -19,7 +17,7 @@ pub use none::NoWarm;
 ///
 /// Two implementations:
 /// - [`NoWarm`] — ZST, compiles to nothing
-/// - [`WarmCache`] — HashMap-based, timestamp-ordered overflow (requires `spill-ring`)
+/// - [`WarmCache`] — HashMap-based, timestamp-ordered overflow
 pub trait WarmTier<T: Checkpointable> {
     /// Insert an item. Returns overflow (oldest) if at capacity.
     fn insert(&mut self, id: T::Id, item: T) -> Option<(T::Id, T)>;

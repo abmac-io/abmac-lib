@@ -5,7 +5,7 @@
 //! items overflow from memory to disk.
 //!
 //! Run with:
-//!   cargo run -p pebble --features spill-ring,bytecast --example file_tiers
+//!   cargo run -p pebble --features cold-buffer,bytecast --example file_tiers
 
 use std::collections::HashMap as StdHashMap;
 use std::fs;

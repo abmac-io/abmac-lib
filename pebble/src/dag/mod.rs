@@ -366,6 +366,12 @@ impl<T: Copy + Eq + Hash + core::fmt::Debug> ComputationDAG<T> {
         self.nodes.contains_key(&id)
     }
 
+    /// Iterate all node IDs in the DAG.
+    #[inline]
+    pub fn node_ids(&self) -> impl Iterator<Item = &T> {
+        self.nodes.keys()
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.nodes.len()

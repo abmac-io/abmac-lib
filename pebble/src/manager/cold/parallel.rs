@@ -2,7 +2,7 @@
 //!
 //! Checkpoints are batched and serialized across multiple threads.
 //! Each worker owns a SpillRing; overflow spills to shared storage
-//! automatically. Requires the `spill-ring-std` feature.
+//! automatically. Requires the `cold-buffer-std` feature.
 
 extern crate alloc;
 extern crate std;
@@ -83,7 +83,7 @@ type SerializePool<T, Ser, const N: usize, S> = spill_ring::WorkerPool<
 /// all workers, drains remaining items to storage, then recreates the
 /// pool.
 ///
-/// Requires the `spill-ring-std` feature.
+/// Requires the `cold-buffer-std` feature.
 ///
 /// # Type Parameters
 /// - `T` — Checkpointable type

@@ -6,10 +6,10 @@ description = "O(√T) checkpoint management using the Williams pebble game algo
 license = "MIT OR Apache-2.0"
 
 [features]
-default = []
+default = ["cold-buffer"]
 bytecast = ["dep:bytecast"]
-spill-ring = ["dep:spill-ring"]
-spill-ring-std = ["spill-ring", "spill-ring/std"]
+cold-buffer = ["dep:spill-ring"]
+cold-buffer-std = ["cold-buffer", "spill-ring/std"]
 verdict = []
 
 [dependencies]
@@ -21,7 +21,7 @@ verdict = { path = "../verdict", default-features = false }
 
 [[example]]
 name = "files"
-required-features = ["spill-ring", "bytecast"]
+required-features = ["cold-buffer", "bytecast"]
 
 [[example]]
 name = "pebble_rebuild"

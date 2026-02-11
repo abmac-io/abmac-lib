@@ -82,7 +82,7 @@ impl PebbleManagerBuilder<(), ()> {
     /// Provide a storage backend and let the builder wire up serialization
     /// and tier configuration automatically.
     ///
-    /// Uses `BytecastSerializer` for serialization. When `spill-ring` is
+    /// Uses `BytecastSerializer` for serialization. When `cold-buffer` is
     /// enabled, builds a `RingCold` + `WarmCache` configuration. Otherwise
     /// falls back to `DirectStorage` + `NoWarm`.
     ///
@@ -92,7 +92,7 @@ impl PebbleManagerBuilder<(), ()> {
             storage,
             strategy: self.strategy,
             hot_capacity: self.hot_capacity,
-            #[cfg(feature = "spill-ring")]
+            #[cfg(feature = "cold-buffer")]
             warm_capacity: None,
         }
     }
@@ -176,7 +176,7 @@ impl<C, W> PebbleManagerBuilder<C, W> {
 /// Created by [`PebbleManagerBuilder::storage`]. Requires the `bytecast` feature.
 ///
 /// The const generic `N` controls the write buffer (ring) capacity when
-/// `spill-ring` is enabled. Defaults to 64. To change it:
+/// `cold-buffer` is enabled. Defaults to 64. To change it:
 ///
 /// ```text
 /// PebbleManagerBuilder::new()
@@ -189,7 +189,7 @@ pub struct StorageBuilder<S, const N: usize = DEFAULT_RING_BUFFER_CAPACITY> {
     storage: S,
     strategy: Strategy,
     hot_capacity: usize,
-    #[cfg(feature = "spill-ring")]
+    #[cfg(feature = "cold-buffer")]
     warm_capacity: Option<usize>,
 }
 
@@ -197,13 +197,13 @@ pub struct StorageBuilder<S, const N: usize = DEFAULT_RING_BUFFER_CAPACITY> {
 impl<S, const N: usize> StorageBuilder<S, N> {
     /// Change the write buffer (ring) capacity.
     ///
-    /// Only affects the `spill-ring` build path. Default: 64.
+    /// Only affects the `cold-buffer` build path. Default: 64.
     pub fn ring_capacity<const M: usize>(self) -> StorageBuilder<S, M> {
         StorageBuilder {
             storage: self.storage,
             strategy: self.strategy,
             hot_capacity: self.hot_capacity,
-            #[cfg(feature = "spill-ring")]
+            #[cfg(feature = "cold-buffer")]
             warm_capacity: self.warm_capacity,
         }
     }
@@ -229,14 +229,14 @@ impl<S, const N: usize> StorageBuilder<S, N> {
     }
 
     /// Set warm cache capacity. Default: matches `hot_capacity`.
-    #[cfg(feature = "spill-ring")]
+    #[cfg(feature = "cold-buffer")]
     pub fn warm_capacity(mut self, capacity: usize) -> Self {
         self.warm_capacity = Some(capacity);
         self
     }
 }
 
-#[cfg(all(feature = "bytecast", feature = "spill-ring"))]
+#[cfg(all(feature = "bytecast", feature = "cold-buffer"))]
 impl<S, const N: usize> StorageBuilder<S, N> {
     /// Build a [`PebbleManager`] with `RingCold` and `WarmCache`.
     pub fn build<T>(
@@ -271,7 +271,7 @@ impl<S, const N: usize> StorageBuilder<S, N> {
     }
 }
 
-#[cfg(all(feature = "bytecast", not(feature = "spill-ring")))]
+#[cfg(all(feature = "bytecast", not(feature = "cold-buffer")))]
 impl<S, const N: usize> StorageBuilder<S, N> {
     /// Build a [`PebbleManager`] with `DirectStorage` and `NoWarm`.
     pub fn build<T>(

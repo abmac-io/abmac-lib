@@ -7,8 +7,10 @@ O(sqrt(T)) checkpoint management using the Red-Blue Pebble Game algorithm.
 - **O(sqrt(T)) space** - Bounded memory with sqrt(T) checkpoints
 - **O(sqrt(T)) replay** - Reconstruct any state in at most sqrt(T) operations
 - **no_std by default** - Works in embedded environments (requires `alloc`)
+- **Immutable checkpoints** - Once added, checkpoints cannot be mutated, guaranteeing safe rebuilds
 - **Pluggable storage** - Abstract over flash, disk, or custom backends
 - **Warm recovery** - Rediscover surviving checkpoints and rebuild the DAG automatically
+- **Branching** - Fork from any historical checkpoint and track branch lineage
 
 ## Usage
 
@@ -38,12 +40,12 @@ Checkpoints:     [2]         [5]         [8]         [10]
 
 ## Feature Flags
 
-| Feature | Description |
-|---------|-------------|
-| `bytecast` | Zero-copy `BytecastSerializer` adapter |
-| `spill-ring` | `RingCold` ring-buffered cold tier and `WarmCache` warm tier |
-| `spill-ring-std` | `ParallelCold` multi-threaded serialization (implies `spill-ring`) |
-| `verdict` | `Actionable` error impls for retry integration |
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `cold-buffer` | yes | `RingCold` ring-buffered cold tier |
+| `cold-buffer-std` | | `ParallelCold` multi-threaded serialization (implies `cold-buffer`) |
+| `bytecast` | | Zero-copy `BytecastSerializer` adapter |
+| `verdict` | | `Actionable` error impls for retry integration |
 
 ## References
 

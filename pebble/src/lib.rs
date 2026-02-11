@@ -75,15 +75,16 @@ pub use dag::{ComputationDAG, DAGError, DAGNode, DAGStats};
 pub use game::{PebbleColor, PebbleError, PebbleGame, PebbleOperation, PebbleRules};
 #[cfg(feature = "bytecast")]
 pub use manager::BytecastSerializer;
-#[cfg(feature = "spill-ring-std")]
+#[cfg(feature = "cold-buffer-std")]
 pub use manager::ParallelCold;
+#[cfg(feature = "cold-buffer")]
+pub use manager::RingCold;
 pub use manager::{
-    BuilderError, CheckpointSerializer, Checkpointable, ColdTier, DirectStorage,
-    DirectStorageError, ErasedPebbleManagerError, NoWarm, PebbleManager, PebbleManagerBuilder,
-    PebbleManagerError, PebbleStats, RecoverableColdTier, Result, TheoreticalValidation, WarmTier,
+    BranchError, BranchId, BranchInfo, BuilderError, CheckpointSerializer, Checkpointable,
+    ColdTier, DirectStorage, DirectStorageError, ErasedPebbleManagerError, HEAD, NoWarm,
+    PebbleManager, PebbleManagerBuilder, PebbleManagerError, PebbleStats, RecoverableColdTier,
+    Result, TheoreticalValidation, WarmCache, WarmTier,
 };
-#[cfg(feature = "spill-ring")]
-pub use manager::{RingCold, WarmCache};
 pub use storage::{
     CheckpointLoader, CheckpointMetadata, InMemoryStorage, IntegrityError, IntegrityErrorKind,
     RecoverableStorage, RecoveryMode, RecoveryResult, SessionId, StorageError, crc32,
@@ -108,9 +109,9 @@ pub const fn checkpoint_interval(expected_events: u64) -> u64 {
 /// Prelude for convenient imports.
 pub mod prelude {
     pub use crate::{
-        BuilderError, CheckpointLoader, CheckpointSerializer, Checkpointable, ColdTier,
-        DirectStorage, ErasedPebbleManagerError, HashMap, InMemoryStorage, NoWarm, PebbleManager,
-        PebbleManagerBuilder, PebbleManagerError, RecoverableColdTier, Result, Spout, Strategy,
-        WarmTier, checkpoint_interval, isqrt,
+        BranchError, BranchId, BranchInfo, BuilderError, CheckpointLoader, CheckpointSerializer,
+        Checkpointable, ColdTier, DirectStorage, ErasedPebbleManagerError, HEAD, HashMap,
+        InMemoryStorage, NoWarm, PebbleManager, PebbleManagerBuilder, PebbleManagerError,
+        RecoverableColdTier, Result, Spout, Strategy, WarmTier, checkpoint_interval, isqrt,
     };
 }

@@ -22,7 +22,7 @@ use super::{ColdTier, RecoverableColdTier};
 /// Overflow spills to the storage backend `S` automatically. `flush()`
 /// drains the ring and flushes the storage.
 ///
-/// Requires the `spill-ring` feature.
+/// Requires the `cold-buffer` feature.
 ///
 /// # Type Parameters
 /// - `CId` — Checkpoint ID type

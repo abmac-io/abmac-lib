@@ -36,6 +36,7 @@ where
             warm,
             checkpoints_added: 0,
             io_operations: 0,
+            branches: None,
             #[cfg(debug_assertions)]
             game: crate::game::PebbleGame::new(hot_capacity),
         };

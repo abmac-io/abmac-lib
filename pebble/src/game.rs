@@ -279,7 +279,7 @@ impl<T: Copy + Eq + Hash + fmt::Debug> PebbleGame<T> {
 
     /// Move red→blue. Increments I/O.
     #[cfg(debug_assertions)]
-    #[allow(dead_code)] // used only in #[cfg(not(feature = "spill-ring"))]
+    #[allow(dead_code)] // used only in #[cfg(not(feature = "cold-buffer"))]
     pub(crate) fn move_to_blue(&mut self, node: T) {
         assert!(
             self.red_pebbles.remove(&node),
