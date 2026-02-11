@@ -40,8 +40,10 @@ Checkpoints:     [2]         [5]         [8]         [10]
 
 | Feature | Description |
 |---------|-------------|
-| `verdict` | `Actionable` error impls for retry integration |
 | `bytecast` | Zero-copy `BytecastSerializer` adapter |
+| `spill-ring` | `RingCold` ring-buffered cold tier and `WarmCache` warm tier |
+| `spill-ring-std` | `ParallelCold` multi-threaded serialization (implies `spill-ring`) |
+| `verdict` | `Actionable` error impls for retry integration |
 
 ## References
 
@@ -56,4 +58,4 @@ Pebble implements the Red-Blue Pebble Game model from Hong & Kung (1981), using 
 
 ## License
 
-Licensed under either of [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE) at your option.
+Licensed under either of [MIT](../LICENSE-MIT) or [Apache 2.0](../LICENSE-APACHE) at your option.
