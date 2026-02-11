@@ -539,28 +539,6 @@ fn test_recover_with_dependencies() {
     assert_eq!(recovered_manager.len(), in_storage);
 }
 
-// get_mut
-
-#[test]
-fn test_get_mut() {
-    let mut manager = PebbleManager::new(test_cold(), NoWarm, Strategy::default(), 10);
-
-    manager
-        .add(TestCheckpoint {
-            id: 1,
-            data: "original".into(),
-            deps: vec![],
-        })
-        .unwrap();
-
-    // Mutate in place
-    manager.get_mut(1).unwrap().data = "mutated".into();
-    assert_eq!(manager.get(1).unwrap().data, "mutated");
-
-    // Non-existent returns None
-    assert!(manager.get_mut(99).is_none());
-}
-
 // Spill-ring warm tier integration
 
 #[cfg(feature = "spill-ring")]

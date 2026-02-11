@@ -23,4 +23,7 @@ verdict = { path = "../verdict", default-features = false }
 name = "files"
 required-features = ["spill-ring", "bytecast"]
 
+[[example]]
+name = "pebble_rebuild"
+
 [dev-dependencies]

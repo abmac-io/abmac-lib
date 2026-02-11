@@ -85,6 +85,11 @@ where
     }
 
     /// Add a checkpoint. Evicts older checkpoints to storage if fast memory is full.
+    ///
+    /// Checkpoints are immutable once added. The rebuild engine assumes
+    /// stored values are the canonical result of `compute_from_dependencies`,
+    /// so mutating a checkpoint after insertion would silently corrupt any
+    /// downstream rebuild that depends on it.
     #[must_use = "this returns a Result that may indicate an error"]
     pub fn add(&mut self, checkpoint: T) -> Result<(), T::Id, C::Error> {
         let state_id = checkpoint.checkpoint_id();
@@ -144,22 +149,13 @@ where
 
     /// Get a checkpoint in fast memory. Returns `None` if not in fast memory.
     ///
-    /// Does **not** update LRU access tracking (requires `&self`).
-    /// Use [`get_mut`](Self::get_mut) when eviction ordering should
-    /// reflect the access.
+    /// Checkpoints are immutable once added — mutating a value would
+    /// silently invalidate any downstream checkpoint that depends on it
+    /// during a rebuild. Use [`remove`](Self::remove) + [`add`](Self::add)
+    /// to replace a checkpoint.
     #[inline]
     pub fn get(&self, state_id: T::Id) -> Option<&T> {
         self.red_pebbles.get(&state_id)
-    }
-
-    /// Get a mutable checkpoint in fast memory. Marks as accessed in the DAG.
-    #[inline]
-    pub fn get_mut(&mut self, state_id: T::Id) -> Option<&mut T> {
-        let result = self.red_pebbles.get_mut(&state_id);
-        if result.is_some() {
-            self.dag.mark_accessed(state_id);
-        }
-        result
     }
 
     /// Check if a checkpoint is in fast memory (red pebble).
