@@ -140,3 +140,15 @@ impl<T: ToBytes, S> ToBytes for BatchSpout<T, S> {
         Some(<usize as ToBytes>::MAX_SIZE? + self.buffer.byte_len()?)
     }
 }
+
+/// Decode a serialized `BatchSpout` snapshot.
+///
+/// Returns `(threshold, buffered_items)` from the bytes produced by
+/// `BatchSpout::to_bytes()`. The caller reconstructs the `BatchSpout`
+/// with their own sink and uses these values to restore state.
+pub fn decode_batch<T: FromBytes>(bytes: &[u8]) -> Result<(usize, Vec<T>), BytesError> {
+    let mut reader = ByteReader::new(bytes);
+    let threshold: usize = reader.read()?;
+    let buffer: Vec<T> = reader.read()?;
+    Ok((threshold, buffer))
+}
