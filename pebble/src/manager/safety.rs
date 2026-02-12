@@ -18,7 +18,6 @@ use super::warm::WarmTier;
 /// If the checkpoint was removed after the token was created, the consuming
 /// method still returns an error — the token reduces the error surface but
 /// cannot eliminate it entirely.
-#[must_use = "token should be consumed by load_ref or rebuild_ref"]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CheckpointRef<Id> {
     id: Id,
@@ -46,7 +45,6 @@ impl<Id> CheckpointRef<Id> {
 ///
 /// Borrows the manager mutably, so no other mutation can happen between
 /// guard creation and use.
-#[must_use = "guard should be consumed by .store() or .insert()"]
 pub struct CapacityGuard<'a, T, C, W>
 where
     T: Checkpointable,
