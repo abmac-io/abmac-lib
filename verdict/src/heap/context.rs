@@ -296,20 +296,40 @@ impl<E, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>>
 
 // Dynamic State
 
+/// Result of resolving a [`Context<E, Dynamic>`] into a concrete status.
+///
+/// Returned by [`Context::resolve()`]. Each variant carries the context
+/// transitioned to the matching typestate.
+pub enum Resolved<E, Overflow: Spout<Frame, Error = core::convert::Infallible> = DropSpout> {
+    /// Error is temporary and may succeed on retry.
+    Temporary(Context<E, Temporary, Overflow>),
+    /// Error was temporary but retries are exhausted.
+    Exhausted(Context<E, Exhausted, Overflow>),
+    /// Error is permanent and should not be retried.
+    Permanent(Context<E, Permanent, Overflow>),
+}
+
+impl<E: Debug, Overflow: Spout<Frame, Error = core::convert::Infallible>> Debug
+    for Resolved<E, Overflow>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Temporary(c) => f.debug_tuple("Temporary").field(c).finish(),
+            Self::Exhausted(c) => f.debug_tuple("Exhausted").field(c).finish(),
+            Self::Permanent(c) => f.debug_tuple("Permanent").field(c).finish(),
+        }
+    }
+}
+
 impl<E: Actionable, Overflow: Spout<Frame, Error = core::convert::Infallible>>
     Context<E, Dynamic, Overflow>
 {
     /// Refine to a concrete status based on the error's status value.
-    ///
-    /// # Errors
-    ///
-    /// Returns the `Permanent` variant if the error is not retryable.
-    pub fn resolve(
-        self,
-    ) -> Result<Context<E, Temporary, Overflow>, Context<E, Permanent, Overflow>> {
+    pub fn resolve(self) -> Resolved<E, Overflow> {
         match self.error.status_value() {
-            ErrorStatusValue::Temporary => Ok(self.transition()),
-            _ => Err(self.transition()),
+            ErrorStatusValue::Temporary => Resolved::Temporary(self.transition()),
+            ErrorStatusValue::Exhausted => Resolved::Exhausted(self.transition()),
+            ErrorStatusValue::Permanent => Resolved::Permanent(self.transition()),
         }
     }
 

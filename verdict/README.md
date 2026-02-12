@@ -98,8 +98,9 @@ Errors carry compile-time status that prevents misuse:
 let ctx: Ctx<ApiError> = /* ... */;
 
 match ctx.resolve() {
-    Ok(temp) => { /* Context<_, Temporary> — compiler knows it's retryable */ }
-    Err(perm) => { /* Context<_, Permanent> — retry logic won't compile here */ }
+    Resolved::Temporary(temp) => { /* Context<_, Temporary> — retryable */ }
+    Resolved::Exhausted(ex) => { /* Context<_, Exhausted> — retries spent */ }
+    Resolved::Permanent(perm) => { /* Context<_, Permanent> — never retryable */ }
 }
 ```
 

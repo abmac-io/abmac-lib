@@ -68,11 +68,10 @@ fn test_contextualized_refine_temporary() {
     let err = TestError::temporary("test error");
     let ctx = Context::new(err);
 
-    let result = ctx.resolve();
-    assert!(result.is_ok());
-
-    let temp = result.unwrap();
-    assert!(temp.is_retryable());
+    match ctx.resolve() {
+        Resolved::Temporary(temp) => assert!(temp.is_retryable()),
+        other => panic!("expected Temporary, got {other:?}"),
+    }
 }
 
 #[test]
@@ -80,11 +79,10 @@ fn test_contextualized_refine_permanent() {
     let err = TestError::permanent("test error");
     let ctx = Context::new(err);
 
-    let result = ctx.resolve();
-    assert!(result.is_err());
-
-    let perm = result.unwrap_err();
-    assert!(!perm.is_retryable());
+    match ctx.resolve() {
+        Resolved::Permanent(perm) => assert!(!perm.is_retryable()),
+        other => panic!("expected Permanent, got {other:?}"),
+    }
 }
 
 #[test]
@@ -92,10 +90,12 @@ fn test_contextualized_exhaust() {
     let err = TestError::temporary("test error");
     let ctx = Context::new(err);
 
-    let temp = ctx.resolve().unwrap();
-    let persistent = temp.exhaust();
+    let Resolved::Temporary(temp) = ctx.resolve() else {
+        panic!("expected Temporary");
+    };
+    let exhausted = temp.exhaust();
 
-    assert!(!persistent.is_retryable());
+    assert!(!exhausted.is_retryable());
 }
 
 #[test]
@@ -296,7 +296,9 @@ fn test_contextualized_actionable() {
 fn test_refined_actionable_uses_compile_time_status() {
     let err = TestError::temporary("test");
     let ctx = Context::new(err);
-    let temp = ctx.resolve().unwrap();
+    let Resolved::Temporary(temp) = ctx.resolve() else {
+        panic!("expected Temporary");
+    };
 
     // Even if inner error somehow changed, the typestate controls status
     assert_eq!(temp.status_value(), ErrorStatusValue::Temporary);
@@ -912,7 +914,9 @@ fn test_backtrace_accessor() {
 #[test]
 fn test_backtrace_survives_resolve() {
     let ctx = Context::new(TestError::temporary("test"));
-    let temp = ctx.resolve().unwrap();
+    let Resolved::Temporary(temp) = ctx.resolve() else {
+        panic!("expected Temporary");
+    };
     let _bt = temp.backtrace();
 }
 
@@ -920,9 +924,11 @@ fn test_backtrace_survives_resolve() {
 #[test]
 fn test_backtrace_survives_exhaust() {
     let ctx = Context::new(TestError::temporary("test"));
-    let temp = ctx.resolve().unwrap();
-    let persistent = temp.exhaust();
-    let _bt = persistent.backtrace();
+    let Resolved::Temporary(temp) = ctx.resolve() else {
+        panic!("expected Temporary");
+    };
+    let exhausted = temp.exhaust();
+    let _bt = exhausted.backtrace();
 }
 
 #[cfg(feature = "std")]
@@ -1102,7 +1108,9 @@ mod bytecast_tests {
             message: alloc::string::String::from("timeout"),
         };
         let ctx = Context::new(err);
-        let temp = ctx.resolve().unwrap();
+        let Resolved::Temporary(temp) = ctx.resolve() else {
+            panic!("expected Temporary");
+        };
 
         let bytes = temp.to_vec().unwrap();
         let (decoded, consumed) = decode_context::<SerTestError>(&bytes).unwrap();
@@ -1124,7 +1132,9 @@ mod bytecast_tests {
             message: alloc::string::String::from("not found"),
         };
         let ctx = Context::new(err);
-        let perm = ctx.resolve().unwrap_err();
+        let Resolved::Permanent(perm) = ctx.resolve() else {
+            panic!("expected Permanent");
+        };
 
         let bytes = perm.to_vec().unwrap();
         let (decoded, consumed) = decode_context::<SerTestError>(&bytes).unwrap();
@@ -1146,7 +1156,10 @@ mod bytecast_tests {
             message: alloc::string::String::from("gave up"),
         };
         let ctx = Context::new(err);
-        let exhausted = ctx.resolve().unwrap().exhaust();
+        let Resolved::Temporary(temp) = ctx.resolve() else {
+            panic!("expected Temporary");
+        };
+        let exhausted = temp.exhaust();
 
         let bytes = exhausted.to_vec().unwrap();
         let (decoded, consumed) = decode_context::<SerTestError>(&bytes).unwrap();
@@ -1170,7 +1183,9 @@ mod bytecast_tests {
         let ctx = Context::new(err)
             .with_ctx("connecting to db")
             .with_ctx("handling request");
-        let temp = ctx.resolve().unwrap();
+        let Resolved::Temporary(temp) = ctx.resolve() else {
+            panic!("expected Temporary");
+        };
 
         let bytes = temp.to_vec().unwrap();
         let (decoded, _) = decode_context::<SerTestError>(&bytes).unwrap();

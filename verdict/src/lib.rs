@@ -192,7 +192,7 @@ pub mod prelude {
 
     #[cfg(feature = "alloc")]
     pub use crate::{
-        Context, ContextExt, Ctx, Frame, FrameRecord, LogRecord, OptionExt, ResultExt,
+        Context, ContextExt, Ctx, Frame, FrameRecord, LogRecord, OptionExt, Resolved, ResultExt,
         RetryOutcome, bail, ensure, with_retry,
     };
 

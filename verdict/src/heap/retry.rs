@@ -5,7 +5,7 @@ use core::fmt::{self, Display};
 
 use spout::DropSpout;
 
-use crate::{Actionable, Context, Dynamic, Exhausted, Frame, Permanent};
+use crate::{Actionable, Context, Dynamic, Exhausted, Frame, Permanent, Resolved};
 
 /// Outcome of a retry operation.
 #[non_exhaustive]
@@ -135,8 +135,9 @@ where
     let mut last_temp = match f() {
         Ok(v) => return Ok(v),
         Err(e) => match e.resolve() {
-            Ok(temp) => temp.with_ctx(format!("attempt 1/{max_attempts}")),
-            Err(perm) => return Err(RetryOutcome::Permanent(perm)),
+            Resolved::Temporary(temp) => temp.with_ctx(format!("attempt 1/{max_attempts}")),
+            Resolved::Exhausted(ex) => return Err(RetryOutcome::Exhausted(ex)),
+            Resolved::Permanent(perm) => return Err(RetryOutcome::Permanent(perm)),
         },
     };
 
@@ -144,10 +145,11 @@ where
         match f() {
             Ok(v) => return Ok(v),
             Err(e) => match e.resolve() {
-                Ok(temp) => {
+                Resolved::Temporary(temp) => {
                     last_temp = temp.with_ctx(format!("attempt {attempt}/{max_attempts}"));
                 }
-                Err(perm) => return Err(RetryOutcome::Permanent(perm)),
+                Resolved::Exhausted(ex) => return Err(RetryOutcome::Exhausted(ex)),
+                Resolved::Permanent(perm) => return Err(RetryOutcome::Permanent(perm)),
             },
         }
     }
@@ -178,8 +180,9 @@ where
     let mut last_temp = match f() {
         Ok(v) => return Ok(v),
         Err(e) => match e.resolve() {
-            Ok(temp) => temp.with_ctx(format!("attempt 1/{max_attempts}")),
-            Err(perm) => return Err(RetryOutcome::Permanent(perm)),
+            Resolved::Temporary(temp) => temp.with_ctx(format!("attempt 1/{max_attempts}")),
+            Resolved::Exhausted(ex) => return Err(RetryOutcome::Exhausted(ex)),
+            Resolved::Permanent(perm) => return Err(RetryOutcome::Permanent(perm)),
         },
     };
 
@@ -189,10 +192,11 @@ where
         match f() {
             Ok(v) => return Ok(v),
             Err(e) => match e.resolve() {
-                Ok(temp) => {
+                Resolved::Temporary(temp) => {
                     last_temp = temp.with_ctx(format!("attempt {attempt}/{max_attempts}"));
                 }
-                Err(perm) => return Err(RetryOutcome::Permanent(perm)),
+                Resolved::Exhausted(ex) => return Err(RetryOutcome::Exhausted(ex)),
+                Resolved::Permanent(perm) => return Err(RetryOutcome::Permanent(perm)),
             },
         }
     }
