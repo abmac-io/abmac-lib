@@ -32,7 +32,9 @@ pub(super) const DAG_IO_BOUND: f64 = 3.0;
 /// - `C` — Cold tier (serialization + storage)
 /// - `W` — Warm tier (unserialized eviction buffer)
 ///
-/// Not thread-safe. Wrap in `Mutex` or `RwLock` for concurrent access.
+/// Not internally synchronized. For concurrent access, wrap in a
+/// `Mutex` or `RwLock`. `PebbleManager` is `Send` when all type
+/// parameters (`T`, `C`, `W`) are `Send`.
 #[must_use]
 pub struct PebbleManager<T, C, W>
 where
@@ -410,6 +412,8 @@ where
             let (id, ref checkpoint) = pending[i];
             if let Err(e) = self.cold.store(id, checkpoint) {
                 // Re-insert the remaining (unstored) items back into warm.
+                // Safe: warm was fully drained above, so re-inserting the
+                // remaining items cannot exceed its capacity.
                 for (remaining_id, remaining) in pending.drain(i..) {
                     self.warm.insert(remaining_id, remaining);
                 }
