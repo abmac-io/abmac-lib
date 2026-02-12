@@ -396,6 +396,21 @@ impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRin
         self.flush();
     }
 
+    /// Shared reference to the spout.
+    ///
+    /// # Safety contract
+    /// Safe to call when no `push`, `flush`, or other mutation is in
+    /// progress — guaranteed by Rust's borrow rules since `&self`
+    /// prevents any concurrent `&mut self` call.
+    #[inline]
+    #[must_use]
+    pub fn sink_ref(&self) -> &S {
+        // SAFETY: SpillRing is !Sync, so &self proves single-context
+        // access.  No &mut S alias can exist because that would
+        // require &mut self, which conflicts with this &self borrow.
+        unsafe { self.sink.get_ref() }
+    }
+
     /// Reference to the spout.
     #[inline]
     #[must_use]

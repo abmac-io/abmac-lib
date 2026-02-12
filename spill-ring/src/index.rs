@@ -22,6 +22,14 @@ impl<S> SpoutCell<S> {
         unsafe { &mut *self.0.get() }
     }
 
+    /// # Safety
+    /// Caller must ensure no `&mut S` alias exists for the duration of
+    /// the returned reference.
+    #[inline]
+    pub(crate) unsafe fn get_ref(&self) -> &S {
+        unsafe { &*self.0.get() }
+    }
+
     #[inline]
     pub(crate) fn get_mut(&mut self) -> &mut S {
         self.0.get_mut()
