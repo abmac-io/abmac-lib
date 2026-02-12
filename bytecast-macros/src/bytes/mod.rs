@@ -172,6 +172,43 @@ pub fn extract_box_inner(ty: &syn::Type) -> Option<&syn::Type> {
     }
 }
 
+/// Collect where-clause predicates for non-skipped field types.
+///
+/// For each non-skipped field, produces a `FieldType: Bound` predicate using the
+/// serializable type (inner type for `#[bytecast(boxed)]` fields). This is the
+/// serde-style approach: bounds are placed on field types, not type parameters,
+/// so generic parameters that only appear in skipped fields (e.g. `PhantomData<T>`)
+/// don't require the bound.
+pub fn field_type_bounds(
+    input: &syn::DeriveInput,
+    bound: syn::TypeParamBound,
+) -> syn::Result<Vec<syn::WherePredicate>> {
+    // Only add bounds if there are type parameters.
+    if input.generics.type_params().next().is_none() {
+        return Ok(Vec::new());
+    }
+
+    let fields: Vec<&syn::Field> = match &input.data {
+        syn::Data::Struct(data) => match &data.fields {
+            syn::Fields::Named(f) => f.named.iter().collect(),
+            syn::Fields::Unnamed(f) => f.unnamed.iter().collect(),
+            syn::Fields::Unit => vec![],
+        },
+        syn::Data::Enum(data) => data.variants.iter().flat_map(|v| v.fields.iter()).collect(),
+        syn::Data::Union(_) => vec![],
+    };
+
+    let mut predicates = Vec::new();
+    for field in fields {
+        if has_skip_attr(field) {
+            continue;
+        }
+        let ty = serializable_type(field)?;
+        predicates.push(syn::parse_quote!(#ty: #bound));
+    }
+    Ok(predicates)
+}
+
 /// Resolve the serializable type for a field, accounting for `#[bytecast(boxed)]`.
 pub fn serializable_type(field: &syn::Field) -> syn::Result<&syn::Type> {
     if has_boxed_attr(field) {

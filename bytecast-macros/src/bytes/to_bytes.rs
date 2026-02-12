@@ -1,8 +1,8 @@
 //! ToBytes derive macro implementation.
 
 use super::{
-    disc_capacity, has_boxed_attr, has_skip_attr, reject_enum_field_attrs, repr_int_type,
-    resolve_discriminants, serializable_type,
+    disc_capacity, field_type_bounds, has_boxed_attr, has_skip_attr, reject_enum_field_attrs,
+    repr_int_type, resolve_discriminants, serializable_type,
 };
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -20,7 +20,11 @@ pub fn derive_to_bytes(input: TokenStream) -> TokenStream {
 
 fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let name = &input.ident;
-    let generics = &input.generics;
+    let mut generics = input.generics.clone();
+    let extra_bounds = field_type_bounds(input, syn::parse_quote!(bytecast::ToBytes))?;
+    if !extra_bounds.is_empty() {
+        generics.make_where_clause().predicates.extend(extra_bounds);
+    }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let (body, byte_len_body, max_size_body) = match &input.data {
