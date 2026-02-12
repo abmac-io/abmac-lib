@@ -2,7 +2,7 @@
 
 use super::{
     disc_capacity, field_type_bounds, has_boxed_attr, has_skip_attr, reject_enum_field_attrs,
-    repr_int_type, resolve_discriminants, serializable_type,
+    repr_int_type, resolve_discriminants, serializable_type, validate_struct_field_attrs,
 };
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -28,11 +28,14 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let (body, byte_len_body, max_size_body) = match &input.data {
-        Data::Struct(data) => (
-            generate_struct(&data.fields),
-            generate_byte_len_struct(&data.fields),
-            generate_max_size_struct(&data.fields)?,
-        ),
+        Data::Struct(data) => {
+            validate_struct_field_attrs(&data.fields)?;
+            (
+                generate_struct(&data.fields),
+                generate_byte_len_struct(&data.fields),
+                generate_max_size_struct(&data.fields)?,
+            )
+        }
         Data::Enum(data) => {
             let disc_ident = validate_enum(input, data)?;
             let disc_values = resolve_discriminants(data)?;

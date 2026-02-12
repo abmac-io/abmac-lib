@@ -95,25 +95,42 @@ fn parse_int_lit(lit: &syn::Lit) -> syn::Result<i128> {
     }
 }
 
-/// Check if a field has `#[bytecast(name)]` for the given attribute name.
-fn has_bytecast_attr(field: &syn::Field, name: &str) -> bool {
-    field.attrs.iter().any(|attr| {
+/// Parsed `#[bytecast(...)]` attributes on a single field.
+struct FieldAttrs {
+    skip: bool,
+    boxed: bool,
+}
+
+/// Parse all `#[bytecast(...)]` attributes on a field, rejecting unknown names.
+fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
+    let mut attrs = FieldAttrs {
+        skip: false,
+        boxed: false,
+    };
+    for attr in &field.attrs {
         if !attr.path().is_ident("bytecast") {
-            return false;
+            continue;
         }
-        let mut found = false;
-        let _ = attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident(name) {
-                found = true;
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("skip") {
+                attrs.skip = true;
+            } else if meta.path.is_ident("boxed") {
+                attrs.boxed = true;
+            } else {
+                return Err(meta.error("unknown bytecast attribute; expected `skip` or `boxed`"));
             }
             Ok(())
-        });
-        found
-    })
+        })?;
+    }
+    Ok(attrs)
 }
 
 pub fn has_skip_attr(field: &syn::Field) -> bool {
-    has_bytecast_attr(field, "skip") || is_phantom_data(&field.ty)
+    parse_field_attrs(field).is_ok_and(|a| a.skip) || is_phantom_data(&field.ty)
+}
+
+pub fn has_boxed_attr(field: &syn::Field) -> bool {
+    parse_field_attrs(field).is_ok_and(|a| a.boxed)
 }
 
 /// Check if a type is `PhantomData` (with any generic args).
@@ -128,22 +145,28 @@ fn is_phantom_data(ty: &syn::Type) -> bool {
         .is_some_and(|seg| seg.ident == "PhantomData")
 }
 
-pub fn has_boxed_attr(field: &syn::Field) -> bool {
-    has_bytecast_attr(field, "boxed")
+/// Validate all `#[bytecast(...)]` attributes on struct fields.
+/// Rejects unknown attribute names at compile time.
+pub fn validate_struct_field_attrs(fields: &syn::Fields) -> syn::Result<()> {
+    for field in fields {
+        parse_field_attrs(field)?;
+    }
+    Ok(())
 }
 
-/// Reject `#[bytecast(skip)]` and `#[bytecast(boxed)]` on enum variant fields.
-/// These attributes are only supported on struct fields.
+/// Validate and reject `#[bytecast(...)]` on enum variant fields.
+/// Enum fields don't support `skip` or `boxed`.
 pub fn reject_enum_field_attrs(data: &syn::DataEnum) -> syn::Result<()> {
     for variant in &data.variants {
         for field in variant.fields.iter() {
-            if has_bytecast_attr(field, "skip") {
+            let attrs = parse_field_attrs(field)?;
+            if attrs.skip {
                 return Err(syn::Error::new_spanned(
                     field,
                     "#[bytecast(skip)] is not supported on enum variant fields",
                 ));
             }
-            if has_bytecast_attr(field, "boxed") {
+            if attrs.boxed {
                 return Err(syn::Error::new_spanned(
                     field,
                     "#[bytecast(boxed)] is not supported on enum variant fields",
