@@ -364,9 +364,9 @@ fn test_theoretical_validation_space_bound() {
     // Space complexity ratio: hot_capacity=10, sqrt(100)=10 → ratio=1.0
     let stats = manager.stats();
     assert!(
-        (stats.space_complexity_ratio - 1.0).abs() < 0.01,
+        (stats.space_complexity_ratio() - 1.0).abs() < 0.01,
         "Space ratio should be ~1.0, got {}",
-        stats.space_complexity_ratio
+        stats.space_complexity_ratio()
     );
 }
 
@@ -421,17 +421,17 @@ fn test_theoretical_validation_io_bound() {
     manager.load(cold_id).unwrap();
 
     let stats = manager.stats();
-    assert!(stats.io_operations > 0, "should have performed real I/O");
-    assert!(stats.theoretical_min_io > 0, "min I/O should be nonzero");
+    assert!(stats.io_operations() > 0, "should have performed real I/O");
+    assert!(stats.theoretical_min_io() > 0, "min I/O should be nonzero");
     assert!(
-        stats.io_optimality_ratio > 1.0,
+        stats.io_optimality_ratio() > 1.0,
         "ratio should exceed 1.0 with eviction overhead (got {})",
-        stats.io_optimality_ratio,
+        stats.io_optimality_ratio(),
     );
 
     // Validation should report the bound check consistently
     let validation = manager.validate_theoretical_bounds();
-    let expected = stats.io_optimality_ratio <= 3.0;
+    let expected = stats.io_optimality_ratio() <= 3.0;
     assert_eq!(
         validation.io_bound_satisfied(),
         expected,
@@ -928,8 +928,8 @@ fn builder_warm_capacity_configurable() {
     }
 
     let stats = manager.stats();
-    assert_eq!(stats.red_pebble_count, 4);
-    assert_eq!(stats.warm_count, 2);
+    assert_eq!(stats.red_pebble_count(), 4);
+    assert_eq!(stats.warm_count(), 2);
 
     // 7th add overflows warm -> write buffer
     manager
@@ -941,6 +941,6 @@ fn builder_warm_capacity_configurable() {
         .unwrap();
 
     let stats = manager.stats();
-    assert_eq!(stats.warm_count, 2);
-    assert!(stats.write_buffer_count > 0 || stats.blue_pebble_count > 0);
+    assert_eq!(stats.warm_count(), 2);
+    assert!(stats.write_buffer_count() > 0 || stats.blue_pebble_count() > 0);
 }
