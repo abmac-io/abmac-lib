@@ -2,7 +2,7 @@
 
 use super::{
     disc_capacity, field_type_bounds, has_boxed_attr, has_skip_attr, reject_enum_field_attrs,
-    repr_int_type, resolve_discriminants, serializable_type,
+    repr_int_type, resolve_discriminants, serializable_type, validate_struct_field_attrs,
 };
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -29,6 +29,7 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
 
     let body = match &input.data {
         Data::Struct(data) => {
+            validate_struct_field_attrs(&data.fields)?;
             let (reads, constructor) = generate_struct(name, &data.fields)?;
             quote! {
                 #reads

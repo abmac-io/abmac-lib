@@ -95,56 +95,6 @@ fn parse_int_lit(lit: &syn::Lit) -> syn::Result<i128> {
     }
 }
 
-/// Check if a field has `#[bytecast(name)]` for the given attribute name.
-fn has_bytecast_attr(field: &syn::Field, name: &str) -> bool {
-    field.attrs.iter().any(|attr| {
-        if !attr.path().is_ident("bytecast") {
-            return false;
-        }
-        values.push(next);
-        next = next.wrapping_add(1);
-    }
-    Ok(values)
-}
-
-/// Parse an integer literal from a discriminant expression.
-/// Supports both positive (`10`) and negative (`-10`) literals.
-fn parse_int_expr(expr: &syn::Expr) -> syn::Result<i128> {
-    match expr {
-        syn::Expr::Lit(lit) => parse_int_lit(&lit.lit),
-        syn::Expr::Unary(syn::ExprUnary {
-            op: syn::UnOp::Neg(_),
-            expr,
-            ..
-        }) => {
-            if let syn::Expr::Lit(lit) = expr.as_ref() {
-                Ok(-parse_int_lit(&lit.lit)?)
-            } else {
-                Err(syn::Error::new_spanned(
-                    expr,
-                    "bytecast: enum discriminants must be integer literals",
-                ))
-            }
-        }
-        _ => Err(syn::Error::new_spanned(
-            expr,
-            "bytecast: enum discriminants must be integer literals",
-        )),
-    }
-}
-
-fn parse_int_lit(lit: &syn::Lit) -> syn::Result<i128> {
-    match lit {
-        syn::Lit::Int(int) => int
-            .base10_parse::<i128>()
-            .map_err(|e| syn::Error::new(int.span(), e)),
-        _ => Err(syn::Error::new_spanned(
-            lit,
-            "bytecast: enum discriminants must be integer literals",
-        )),
-    }
-}
-
 /// Parsed `#[bytecast(...)]` attributes on a single field.
 struct FieldAttrs {
     skip: bool,
@@ -217,28 +167,6 @@ pub fn reject_enum_field_attrs(data: &syn::DataEnum) -> syn::Result<()> {
                 ));
             }
             if attrs.boxed {
-                return Err(syn::Error::new_spanned(
-                    field,
-                    "#[bytecast(boxed)] is not supported on enum variant fields",
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Reject `#[bytecast(skip)]` and `#[bytecast(boxed)]` on enum variant fields.
-/// These attributes are only supported on struct fields.
-pub fn reject_enum_field_attrs(data: &syn::DataEnum) -> syn::Result<()> {
-    for variant in &data.variants {
-        for field in variant.fields.iter() {
-            if has_bytecast_attr(field, "skip") {
-                return Err(syn::Error::new_spanned(
-                    field,
-                    "#[bytecast(skip)] is not supported on enum variant fields",
-                ));
-            }
-            if has_bytecast_attr(field, "boxed") {
                 return Err(syn::Error::new_spanned(
                     field,
                     "#[bytecast(boxed)] is not supported on enum variant fields",
