@@ -1094,6 +1094,96 @@ mod bytecast_tests {
         assert!(decoded.frames()[0].msg().contains("frame 2"));
         assert!(decoded.frames()[1].msg().contains("frame 3"));
     }
+
+    #[test]
+    fn test_decode_context_temporary() {
+        let err = SerTestError {
+            status_val: 1,
+            message: alloc::string::String::from("timeout"),
+        };
+        let ctx = Context::new(err);
+        let temp = ctx.resolve().unwrap();
+
+        let bytes = temp.to_vec().unwrap();
+        let (decoded, consumed) = decode_context::<SerTestError>(&bytes).unwrap();
+
+        assert_eq!(consumed, bytes.len());
+        match decoded {
+            DecodedContext::Temporary(c) => {
+                assert!(c.is_retryable());
+                assert_eq!(c.inner().message, "timeout");
+            }
+            _ => panic!("expected Temporary variant"),
+        }
+    }
+
+    #[test]
+    fn test_decode_context_permanent() {
+        let err = SerTestError {
+            status_val: 0,
+            message: alloc::string::String::from("not found"),
+        };
+        let ctx = Context::new(err);
+        let perm = ctx.resolve().unwrap_err();
+
+        let bytes = perm.to_vec().unwrap();
+        let (decoded, consumed) = decode_context::<SerTestError>(&bytes).unwrap();
+
+        assert_eq!(consumed, bytes.len());
+        match decoded {
+            DecodedContext::Permanent(c) => {
+                assert!(!c.is_retryable());
+                assert_eq!(c.inner().message, "not found");
+            }
+            _ => panic!("expected Permanent variant"),
+        }
+    }
+
+    #[test]
+    fn test_decode_context_exhausted() {
+        let err = SerTestError {
+            status_val: 1,
+            message: alloc::string::String::from("gave up"),
+        };
+        let ctx = Context::new(err);
+        let exhausted = ctx.resolve().unwrap().exhaust();
+
+        let bytes = exhausted.to_vec().unwrap();
+        let (decoded, consumed) = decode_context::<SerTestError>(&bytes).unwrap();
+
+        assert_eq!(consumed, bytes.len());
+        match decoded {
+            DecodedContext::Exhausted(c) => {
+                assert!(!c.is_retryable());
+                assert_eq!(c.inner().message, "gave up");
+            }
+            _ => panic!("expected Exhausted variant"),
+        }
+    }
+
+    #[test]
+    fn test_decode_context_preserves_frames() {
+        let err = SerTestError {
+            status_val: 1,
+            message: alloc::string::String::from("timeout"),
+        };
+        let ctx = Context::new(err)
+            .with_ctx("connecting to db")
+            .with_ctx("handling request");
+        let temp = ctx.resolve().unwrap();
+
+        let bytes = temp.to_vec().unwrap();
+        let (decoded, _) = decode_context::<SerTestError>(&bytes).unwrap();
+
+        match decoded {
+            DecodedContext::Temporary(c) => {
+                assert_eq!(c.frames().len(), 2);
+                assert!(c.frames()[0].msg().contains("connecting to db"));
+                assert!(c.frames()[1].msg().contains("handling request"));
+            }
+            _ => panic!("expected Temporary variant"),
+        }
+    }
 }
 
 // LogRecord tests (serde)

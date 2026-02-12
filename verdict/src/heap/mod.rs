@@ -12,6 +12,8 @@ mod retry;
 mod sinks;
 
 pub use context::Context;
+#[cfg(feature = "bytecast")]
+pub use context::{DecodedContext, decode_context};
 pub use ext::{ContextExt, IntoContext, OptionExt, ResultExt};
 pub use frame::Frame;
 pub use log_record::{FrameRecord, LogRecord};
