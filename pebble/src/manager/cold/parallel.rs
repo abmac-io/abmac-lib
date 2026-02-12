@@ -335,7 +335,7 @@ impl<T, S, Ser, const N: usize> Drop for ParallelCold<T, S, Ser, N>
 where
     T: Checkpointable + Send + Sync + 'static,
     T::Id: Send + Sync + 'static,
-    S: Spout<(T::Id, Vec<u8>), Error = core::convert::Infallible> + Clone + Send + 'static,
+    S: Spout<(T::Id, Vec<u8>)> + Clone + Send + 'static,
     Ser: CheckpointSerializer<T> + Clone + Sync + 'static,
     Ser::Error: Send + 'static,
 {
