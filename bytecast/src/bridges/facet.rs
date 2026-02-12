@@ -22,7 +22,7 @@ use crate::{BytesError, FromBytes, ToBytes, ToBytesExt};
 /// ```
 #[derive(Facet)]
 pub struct BytecastFacet {
-    pub data: String,
+    data: String,
 }
 
 impl BytecastFacet {

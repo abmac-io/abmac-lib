@@ -39,9 +39,8 @@ fn test_facet_json_bool_roundtrip() {
 // Invalid base64 should produce an error
 #[test]
 fn test_facet_invalid_base64() {
-    let wrapped = BytecastFacet {
-        data: String::from("not-valid-base64!!!"),
-    };
+    let json = r#"{"data":"not-valid-base64!!!"}"#;
+    let wrapped: BytecastFacet = facet_json::from_str(json).unwrap();
     let result: Result<u32, _> = wrapped.decode();
     assert!(result.is_err());
 }
@@ -52,7 +51,8 @@ fn test_facet_truncated_bytes() {
     use base64::Engine;
     // Encode only 2 bytes, but u32 needs 4
     let short = base64::engine::general_purpose::STANDARD.encode([0u8, 1]);
-    let wrapped = BytecastFacet { data: short };
+    let json = alloc::format!(r#"{{"data":"{}"}}"#, short);
+    let wrapped: BytecastFacet = facet_json::from_str(&json).unwrap();
     let result: Result<u32, _> = wrapped.decode();
     assert!(result.is_err());
 }
