@@ -2,7 +2,7 @@
 
 use super::{
     disc_capacity, has_boxed_attr, has_skip_attr, reject_enum_field_attrs, repr_int_type,
-    serializable_type,
+    resolve_discriminants, serializable_type,
 };
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;

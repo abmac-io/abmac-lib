@@ -95,6 +95,56 @@ fn parse_int_lit(lit: &syn::Lit) -> syn::Result<i128> {
     }
 }
 
+/// Check if a field has `#[bytecast(name)]` for the given attribute name.
+fn has_bytecast_attr(field: &syn::Field, name: &str) -> bool {
+    field.attrs.iter().any(|attr| {
+        if !attr.path().is_ident("bytecast") {
+            return false;
+        }
+        values.push(next);
+        next = next.wrapping_add(1);
+    }
+    Ok(values)
+}
+
+/// Parse an integer literal from a discriminant expression.
+/// Supports both positive (`10`) and negative (`-10`) literals.
+fn parse_int_expr(expr: &syn::Expr) -> syn::Result<i128> {
+    match expr {
+        syn::Expr::Lit(lit) => parse_int_lit(&lit.lit),
+        syn::Expr::Unary(syn::ExprUnary {
+            op: syn::UnOp::Neg(_),
+            expr,
+            ..
+        }) => {
+            if let syn::Expr::Lit(lit) = expr.as_ref() {
+                Ok(-parse_int_lit(&lit.lit)?)
+            } else {
+                Err(syn::Error::new_spanned(
+                    expr,
+                    "bytecast: enum discriminants must be integer literals",
+                ))
+            }
+        }
+        _ => Err(syn::Error::new_spanned(
+            expr,
+            "bytecast: enum discriminants must be integer literals",
+        )),
+    }
+}
+
+fn parse_int_lit(lit: &syn::Lit) -> syn::Result<i128> {
+    match lit {
+        syn::Lit::Int(int) => int
+            .base10_parse::<i128>()
+            .map_err(|e| syn::Error::new(int.span(), e)),
+        _ => Err(syn::Error::new_spanned(
+            lit,
+            "bytecast: enum discriminants must be integer literals",
+        )),
+    }
+}
+
 /// Parsed `#[bytecast(...)]` attributes on a single field.
 struct FieldAttrs {
     skip: bool,
