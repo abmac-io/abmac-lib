@@ -567,10 +567,24 @@ where
             self.game.place_blue(overflow_id);
 
             if let Err(e) = self.cold.store(overflow_id, &overflow) {
-                // Cold store failed — put the overflow back into warm so it
-                // is not lost. Remove the item we just inserted to make room.
-                self.warm.remove(state_id);
+                // Cold store failed — undo everything so no data is lost.
+                // Remove state_id from warm and put overflow back in its place.
+                let recovered = self.warm.remove(state_id);
                 self.warm.insert(overflow_id, overflow);
+
+                // Put state_id back into hot (where the caller took it from).
+                if let Some(cp) = recovered {
+                    self.red_pebbles.insert(state_id, cp);
+                }
+
+                #[cfg(debug_assertions)]
+                {
+                    self.game.remove_node(overflow_id); // undo place_blue
+                    if self.red_pebbles.contains_key(&state_id) {
+                        self.game.place_red(state_id); // restored to hot
+                    }
+                }
+
                 return Err(PebbleManagerError::Serialization {
                     state_id: overflow_id,
                     source: e,

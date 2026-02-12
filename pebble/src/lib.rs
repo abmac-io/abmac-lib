@@ -95,12 +95,14 @@ pub use spout::Spout;
 pub use strategy::{DAGPriorityMode, DAGStrategy, Strategy, TreeStrategy};
 
 /// Integer square root (floor).
+#[must_use]
 #[inline]
 pub const fn isqrt(n: u64) -> u64 {
     n.isqrt()
 }
 
 /// Optimal checkpoint interval for T events (returns sqrt(T), minimum 1).
+#[must_use]
 #[inline]
 pub const fn checkpoint_interval(expected_events: u64) -> u64 {
     let sqrt = isqrt(expected_events);

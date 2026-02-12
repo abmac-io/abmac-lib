@@ -34,12 +34,15 @@ impl<T: Checkpointable> Default for WarmCache<T> {
 
 impl<T: Checkpointable> WarmCache<T> {
     /// Create a warm cache with the default capacity (64).
+    #[inline]
     pub fn new() -> Self {
         Self::with_capacity(DEFAULT_WARM_CAPACITY)
     }
 
     /// Create a warm cache with the given capacity.
+    #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
+        debug_assert!(capacity > 0, "use NoWarm for zero-capacity warm tier");
         Self {
             entries: HashMap::with_capacity(capacity),
             capacity,
