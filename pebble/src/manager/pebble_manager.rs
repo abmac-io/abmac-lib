@@ -482,7 +482,7 @@ where
 
     /// Remove a checkpoint. Returns `true` if found and removed.
     pub fn remove(&mut self, state_id: T::Id) -> bool {
-        // Track whether the item was in a game-tracked tier (hot or cold).
+        // Remove from whichever tier holds it (hot, warm, or cold).
         let was_in_hot = self.red_pebbles.remove(&state_id).is_some();
         let was_in_warm = !was_in_hot && self.warm.remove(state_id).is_some();
         let was_in_cold = !was_in_hot && !was_in_warm && self.blue_pebbles.remove(&state_id);
