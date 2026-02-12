@@ -230,8 +230,9 @@ impl<E, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>>
     /// Add context with lazy message evaluation.
     #[must_use]
     #[track_caller]
-    pub fn with_ctx_lazy<F: FnOnce() -> String>(self, f: F) -> Self {
-        self.with_frame(Frame::here(f()))
+    pub fn with_ctx_lazy<F: FnOnce() -> String>(mut self, f: F) -> Self {
+        self.add_context(Frame::here(f()));
+        self
     }
 
     /// Add a pre-built frame.
