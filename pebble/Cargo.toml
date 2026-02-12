@@ -26,4 +26,7 @@ required-features = ["cold-buffer", "bytecast"]
 [[example]]
 name = "pebble_rebuild"
 
+[[example]]
+name = "pebble_branching"
+
 [dev-dependencies]

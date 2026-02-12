@@ -67,41 +67,14 @@ where
         let mut latest_state_id: Option<T::Id> = None;
 
         for (state_id, metadata) in checkpoints {
-            let deps = metadata.dependencies();
-
-            // Validate dependencies exist (for non-root checkpoints)
-            let missing_dep = deps.iter().find(|&&dep_id| {
-                !manager.blue_pebbles.contains(&dep_id) && !manager.dag.contains(dep_id)
-            });
-
-            if let Some(&dep_id) = missing_dep {
-                integrity_errors.push(IntegrityError {
-                    state_id: alloc::format!("{:?}", state_id),
-                    kind: IntegrityErrorKind::MissingDependency {
-                        dep_id: alloc::format!("{:?}", dep_id),
-                    },
-                });
-                continue;
+            match manager.recover_checkpoint(state_id, &metadata) {
+                Ok(()) => {
+                    checkpoints_loaded += 1;
+                    dag_nodes_rebuilt += 1;
+                    latest_state_id = Some(state_id);
+                }
+                Err(err) => integrity_errors.push(err),
             }
-
-            // Add to DAG
-            if manager.dag.add_node(state_id, deps).is_err() {
-                integrity_errors.push(IntegrityError {
-                    state_id: alloc::format!("{:?}", state_id),
-                    kind: IntegrityErrorKind::DeserializationFailed,
-                });
-                continue;
-            }
-
-            // Track in blue_pebbles
-            manager.blue_pebbles.insert(state_id);
-            #[cfg(debug_assertions)]
-            manager.game.place_blue(state_id);
-            checkpoints_loaded += 1;
-            dag_nodes_rebuilt += 1;
-
-            // Track latest (keep the actual ID for sorting later)
-            latest_state_id = Some(state_id);
         }
 
         // Determine recovery mode
@@ -126,6 +99,42 @@ where
                 integrity_errors,
             },
         ))
+    }
+
+    /// Validate and register a single checkpoint during recovery.
+    fn recover_checkpoint(
+        &mut self,
+        state_id: T::Id,
+        metadata: &crate::storage::CheckpointMetadata<T::Id>,
+    ) -> core::result::Result<(), IntegrityError> {
+        let deps = metadata.dependencies();
+
+        // Validate dependencies exist (for non-root checkpoints).
+        if let Some(&dep_id) = deps
+            .iter()
+            .find(|&&dep_id| !self.blue_pebbles.contains(&dep_id) && !self.dag.contains(dep_id))
+        {
+            return Err(IntegrityError {
+                state_id: alloc::format!("{:?}", state_id),
+                kind: IntegrityErrorKind::MissingDependency {
+                    dep_id: alloc::format!("{:?}", dep_id),
+                },
+            });
+        }
+
+        // Add to DAG.
+        if self.dag.add_node(state_id, deps).is_err() {
+            return Err(IntegrityError {
+                state_id: alloc::format!("{:?}", state_id),
+                kind: IntegrityErrorKind::DeserializationFailed,
+            });
+        }
+
+        self.blue_pebbles.insert(state_id);
+        #[cfg(debug_assertions)]
+        self.game.place_blue(state_id);
+
+        Ok(())
     }
 
     fn promote_recent_to_hot(&mut self, count: usize) -> Result<(), T::Id, C::Error> {

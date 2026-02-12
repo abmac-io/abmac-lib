@@ -107,20 +107,10 @@ where
         // Add to fast memory
         self.red_pebbles.insert(state_id, checkpoint);
         self.checkpoints_added = self.checkpoints_added.saturating_add(1);
-
-        if let Some(ref mut tracker) = self.branches {
-            let active = tracker.active();
-            tracker.assign(state_id, active);
-            if let Some(info) = tracker.info_mut(active) {
-                info.head = Some(state_id);
-            }
-        }
+        self.track_new_checkpoint(state_id);
 
         #[cfg(debug_assertions)]
-        {
-            self.game.place_red(state_id);
-            self.debug_validate();
-        }
+        self.debug_place_red(state_id);
 
         Ok(())
     }
@@ -147,20 +137,10 @@ where
         // Add to fast memory
         self.red_pebbles.insert(state_id, checkpoint);
         self.checkpoints_added = self.checkpoints_added.saturating_add(1);
-
-        if let Some(ref mut tracker) = self.branches {
-            let active = tracker.active();
-            tracker.assign(state_id, active);
-            if let Some(info) = tracker.info_mut(active) {
-                info.head = Some(state_id);
-            }
-        }
+        self.track_new_checkpoint(state_id);
 
         #[cfg(debug_assertions)]
-        {
-            self.game.place_red(state_id);
-            self.debug_validate();
-        }
+        self.debug_place_red(state_id);
 
         Ok(state_id)
     }
@@ -211,66 +191,71 @@ where
     /// Returns a reference to the checkpoint in fast memory.
     #[must_use = "this returns a Result that may indicate an error"]
     pub fn load(&mut self, state_id: T::Id) -> Result<&T, T::Id, C::Error> {
-        if !self.red_pebbles.contains_key(&state_id) {
-            // Warm tier: promote from warm cache (no deserialization)
-            if let Some(checkpoint) = self.warm.remove(state_id) {
-                if self.red_pebbles.len() >= self.hot_capacity {
-                    self.evict_red_pebbles()?;
+        // Already hot — just touch and return.
+        if self.red_pebbles.contains_key(&state_id) {
+            self.dag.mark_accessed(state_id);
+            return self.red_pebbles.get(&state_id).ok_or_else(|| {
+                PebbleManagerError::InternalInconsistency {
+                    detail: alloc::format!("load: lost {:?} after contains_key", state_id),
                 }
-                self.red_pebbles.insert(state_id, checkpoint);
-                self.dag.mark_accessed(state_id);
+            });
+        }
 
-                #[cfg(debug_assertions)]
-                {
-                    self.game.place_red(state_id);
-                    self.debug_validate();
-                }
-
-                return self.red_pebbles.get(&state_id).ok_or_else(|| {
-                    PebbleManagerError::InternalInconsistency {
-                        detail: alloc::format!("load: lost {:?} after warm insert", state_id),
-                    }
-                });
-            }
-
-            // Cold tier: load from storage
-            if !self.blue_pebbles.contains(&state_id) {
-                return Err(PebbleManagerError::NeverAdded { state_id });
-            }
-
-            // Flush buffered writes so the item is loadable from storage.
-            self.cold
-                .flush()
-                .map_err(|e| PebbleManagerError::FlushFailed { source: e })?;
-
-            let checkpoint =
-                self.cold
-                    .load(state_id)
-                    .map_err(|e| PebbleManagerError::Deserialization {
-                        state_id,
-                        source: e,
-                    })?;
-
+        // Warm tier: promote from warm cache (no deserialization).
+        if let Some(checkpoint) = self.warm.remove(state_id) {
             if self.red_pebbles.len() >= self.hot_capacity {
                 self.evict_red_pebbles()?;
             }
-
             self.red_pebbles.insert(state_id, checkpoint);
-            self.blue_pebbles.remove(&state_id);
-            self.io_operations = self.io_operations.saturating_add(1);
+            self.dag.mark_accessed(state_id);
 
             #[cfg(debug_assertions)]
-            {
-                self.game.move_to_red(state_id);
-                self.debug_validate();
-            }
+            self.debug_place_red(state_id);
+
+            return self.red_pebbles.get(&state_id).ok_or_else(|| {
+                PebbleManagerError::InternalInconsistency {
+                    detail: alloc::format!("load: lost {:?} after warm insert", state_id),
+                }
+            });
         }
 
+        // Cold tier: load from storage.
+        if !self.blue_pebbles.contains(&state_id) {
+            return Err(PebbleManagerError::NeverAdded { state_id });
+        }
+
+        // Flush buffered writes so the item is loadable from storage.
+        self.cold
+            .flush()
+            .map_err(|e| PebbleManagerError::FlushFailed { source: e })?;
+
+        let checkpoint =
+            self.cold
+                .load(state_id)
+                .map_err(|e| PebbleManagerError::Deserialization {
+                    state_id,
+                    source: e,
+                })?;
+
+        if self.red_pebbles.len() >= self.hot_capacity {
+            self.evict_red_pebbles()?;
+        }
+
+        self.red_pebbles.insert(state_id, checkpoint);
+        self.blue_pebbles.remove(&state_id);
+        self.io_operations = self.io_operations.saturating_add(1);
         self.dag.mark_accessed(state_id);
+
+        #[cfg(debug_assertions)]
+        {
+            self.game.move_to_red(state_id);
+            self.debug_validate();
+        }
+
         self.red_pebbles
             .get(&state_id)
             .ok_or_else(|| PebbleManagerError::InternalInconsistency {
-                detail: alloc::format!("load: lost {:?} after insert", state_id),
+                detail: alloc::format!("load: lost {:?} after cold insert", state_id),
             })
     }
 
@@ -370,8 +355,7 @@ where
         // Drain warm tier to cold. Collect first so a mid-iteration
         // failure doesn't lose items that haven't been stored yet.
         let mut pending: Vec<(T::Id, T)> = self.warm.drain().collect();
-        let mut i = 0;
-        while i < pending.len() {
+        for i in 0..pending.len() {
             let (id, ref checkpoint) = pending[i];
             if let Err(e) = self.cold.store(id, checkpoint) {
                 // Re-insert the remaining (unstored) items back into warm.
@@ -388,8 +372,6 @@ where
 
             #[cfg(debug_assertions)]
             self.game.place_blue(id);
-
-            i += 1;
         }
         // Flush cold tier buffers to storage
         self.cold
@@ -445,44 +427,49 @@ where
 
     /// Remove a checkpoint. Returns `true` if found and removed.
     pub fn remove(&mut self, state_id: T::Id) -> bool {
-        if self.red_pebbles.remove(&state_id).is_some() {
-            self.dag.remove_node(state_id);
-            if let Some(ref mut tracker) = self.branches {
-                tracker.remove_checkpoint(state_id);
-            }
-            #[cfg(debug_assertions)]
-            {
-                self.game.remove_node(state_id);
-                self.debug_validate();
-            }
-            return true;
+        // Track whether the item was in a game-tracked tier (hot or cold).
+        let was_in_hot = self.red_pebbles.remove(&state_id).is_some();
+        let was_in_warm = !was_in_hot && self.warm.remove(state_id).is_some();
+        let was_in_cold = !was_in_hot && !was_in_warm && self.blue_pebbles.remove(&state_id);
+
+        if !was_in_hot && !was_in_warm && !was_in_cold {
+            return false;
         }
 
-        if self.warm.remove(state_id).is_some() {
-            self.dag.remove_node(state_id);
-            if let Some(ref mut tracker) = self.branches {
-                tracker.remove_checkpoint(state_id);
-            }
-            return true;
+        self.dag.remove_node(state_id);
+        if let Some(ref mut tracker) = self.branches {
+            tracker.remove_checkpoint(state_id);
         }
 
-        if self.blue_pebbles.remove(&state_id) {
-            self.dag.remove_node(state_id);
-            if let Some(ref mut tracker) = self.branches {
-                tracker.remove_checkpoint(state_id);
-            }
-            #[cfg(debug_assertions)]
-            {
-                self.game.remove_node(state_id);
-                self.debug_validate();
-            }
-            return true;
+        // The game tracks hot and cold tiers (not warm).
+        #[cfg(debug_assertions)]
+        if was_in_hot || was_in_cold {
+            self.game.remove_node(state_id);
+            self.debug_validate();
         }
 
-        false
+        true
     }
 
     // --- Internal ---
+
+    /// Assign a checkpoint to the active branch and update branch head.
+    fn track_new_checkpoint(&mut self, state_id: T::Id) {
+        if let Some(ref mut tracker) = self.branches {
+            let active = tracker.active();
+            tracker.assign(state_id, active);
+            if let Some(info) = tracker.info_mut(active) {
+                info.head = Some(state_id);
+            }
+        }
+    }
+
+    /// Mirror a red pebble placement in the debug game and validate.
+    #[cfg(debug_assertions)]
+    fn debug_place_red(&mut self, state_id: T::Id) {
+        self.game.place_red(state_id);
+        self.debug_validate();
+    }
 
     pub(super) fn evict_red_pebbles(&mut self) -> Result<usize, T::Id, C::Error> {
         let eviction_count = core::cmp::max(1, self.hot_capacity / EVICTION_BATCH_DIVISOR);
@@ -516,8 +503,11 @@ where
         state_id: T::Id,
         checkpoint: T,
     ) -> Result<(), T::Id, C::Error> {
-        // Remove from the game tracker. The warm tier is not modelled
-        // by the pebble game — items re-enter as blue once cold-stored.
+        // Remove from the game tracker immediately. The warm tier is not
+        // modelled by the pebble game, so the node is temporarily untracked
+        // until the warm tier overflows and cold-stores it (place_blue below).
+        // This gap is intentional: validate() is only called after the full
+        // eviction completes, at which point counts are consistent.
         #[cfg(debug_assertions)]
         self.game.remove_node(state_id);
 

@@ -183,7 +183,9 @@ impl DAGStrategy {
         let critical_paths = dag.critical_paths_ref();
         let mut candidates = dag.get_eviction_candidates(active_nodes);
 
-        // Sort based on priority mode - all modes use critical_paths as primary key
+        // Sort based on priority mode — all modes use critical path as primary key.
+        // LowestComputationCost and Hybrid share the same scoring:
+        // (critical_path, computation_cost, access_frequency).
         match self.priority_mode {
             DAGPriorityMode::LeastRecentlyUsed => {
                 candidates.sort_by_key(|node_id| {
@@ -192,16 +194,6 @@ impl DAGStrategy {
                     match node {
                         Some(n) => (*critical_path, n.access_frequency, n.computation_cost),
                         None => (usize::MAX, u64::MAX, usize::MAX),
-                    }
-                });
-            }
-            DAGPriorityMode::LowestComputationCost => {
-                candidates.sort_by_key(|node_id| {
-                    let node = dag.get_node(*node_id);
-                    let critical_path = critical_paths.get(node_id).unwrap_or(&usize::MAX);
-                    match node {
-                        Some(n) => (*critical_path, n.computation_cost, n.access_frequency),
-                        None => (usize::MAX, usize::MAX, u64::MAX),
                     }
                 });
             }
@@ -215,9 +207,7 @@ impl DAGStrategy {
                     }
                 });
             }
-            DAGPriorityMode::Hybrid => {
-                // Hybrid: critical path, then computation cost, then LRU.
-                // Prefers evicting cheap-to-recompute nodes over recently-used ones.
+            DAGPriorityMode::LowestComputationCost | DAGPriorityMode::Hybrid => {
                 candidates.sort_by_key(|node_id| {
                     let node = dag.get_node(*node_id);
                     let critical_path = critical_paths.get(node_id).unwrap_or(&usize::MAX);

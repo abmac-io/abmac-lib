@@ -196,7 +196,10 @@ fn switch_branch_not_found() {
 
     use crate::manager::BranchId;
     let result = mgr.switch_branch(BranchId(999));
-    assert_eq!(result, Err(BranchError::BranchNotFound(BranchId(999))));
+    assert_eq!(
+        result,
+        Err(BranchError::BranchNotFound { id: BranchId(999) })
+    );
 }
 
 #[test]

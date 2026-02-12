@@ -30,31 +30,23 @@ pub struct BranchInfo<T> {
     pub head: Option<T>,
 }
 
-/// Error type for branching operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BranchError {
-    /// Branching has not been enabled on this manager.
-    BranchingNotEnabled,
-    /// The specified branch does not exist.
-    BranchNotFound(BranchId),
-    /// The fork-point checkpoint does not exist in the manager.
-    CheckpointNotFound,
-    /// A branch with this name already exists.
-    NameAlreadyUsed(String),
-}
+verdict::display_error! {
+    /// Error type for branching operations.
+    #[derive(Clone, PartialEq, Eq)]
+    pub enum BranchError {
+        #[display("branching not enabled")]
+        BranchingNotEnabled,
 
-impl core::fmt::Display for BranchError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::BranchingNotEnabled => write!(f, "branching not enabled"),
-            Self::BranchNotFound(id) => write!(f, "branch {:?} not found", id),
-            Self::CheckpointNotFound => write!(f, "fork-point checkpoint not found"),
-            Self::NameAlreadyUsed(name) => write!(f, "branch name already used: {name}"),
-        }
+        #[display("branch {id:?} not found")]
+        BranchNotFound { id: BranchId },
+
+        #[display("fork-point checkpoint not found")]
+        CheckpointNotFound,
+
+        #[display("branch name already used: {name}")]
+        NameAlreadyUsed { name: String },
     }
 }
-
-impl core::error::Error for BranchError {}
 
 /// Tracks branch metadata for checkpoints.
 ///
@@ -98,10 +90,12 @@ impl<T: Copy + Eq + core::hash::Hash> BranchTracker<T> {
         parent: BranchId,
     ) -> core::result::Result<BranchId, BranchError> {
         if !self.branches.contains_key(&parent) {
-            return Err(BranchError::BranchNotFound(parent));
+            return Err(BranchError::BranchNotFound { id: parent });
         }
         if self.branches.values().any(|b| b.name == name) {
-            return Err(BranchError::NameAlreadyUsed(String::from(name)));
+            return Err(BranchError::NameAlreadyUsed {
+                name: String::from(name),
+            });
         }
         let id = BranchId(self.next_id);
         self.next_id += 1;
@@ -160,16 +154,13 @@ impl<T: Copy + Eq + core::hash::Hash> BranchTracker<T> {
     /// Walk the parent chain from a branch back to HEAD.
     /// Returns the chain including the starting branch.
     pub fn lineage(&self, branch_id: BranchId) -> Option<Vec<BranchId>> {
-        if !self.branches.contains_key(&branch_id) {
-            return None;
-        }
         let mut chain = Vec::new();
-        let mut current = Some(branch_id);
-        while let Some(id) = current {
-            chain.push(id);
-            current = self.branches.get(&id).and_then(|b| b.parent);
+        let mut current = self.branches.get(&branch_id);
+        while let Some(info) = current {
+            chain.push(info.id);
+            current = info.parent.and_then(|pid| self.branches.get(&pid));
         }
-        Some(chain)
+        if chain.is_empty() { None } else { Some(chain) }
     }
 
     /// The currently active branch.
@@ -180,7 +171,7 @@ impl<T: Copy + Eq + core::hash::Hash> BranchTracker<T> {
     /// Set the active branch.
     pub fn set_active(&mut self, branch_id: BranchId) -> core::result::Result<(), BranchError> {
         if !self.branches.contains_key(&branch_id) {
-            return Err(BranchError::BranchNotFound(branch_id));
+            return Err(BranchError::BranchNotFound { id: branch_id });
         }
         self.active = branch_id;
         Ok(())

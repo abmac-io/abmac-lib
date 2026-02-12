@@ -25,22 +25,10 @@ where
         }
         let mut tracker = BranchTracker::new();
 
-        // Assign all existing checkpoints to HEAD.
-        for &id in self.red_pebbles.keys() {
-            tracker.assign(id, HEAD);
-        }
-        for &id in &self.blue_pebbles {
-            tracker.assign(id, HEAD);
-        }
-        // Warm tier doesn't expose key iteration, but items
-        // that are in warm were evicted from hot — they would
-        // already have been assigned when they were added.
-        // For enable_branching called after adds, we scan the
-        // IDs we know about from the DAG.
+        // The DAG contains every checkpoint ID (hot, warm, and cold).
+        // A single pass assigns them all to HEAD.
         for &id in self.dag.node_ids() {
-            if tracker.branch_of(id).is_none() {
-                tracker.assign(id, HEAD);
-            }
+            tracker.assign(id, HEAD);
         }
 
         // Set head to the most recently created checkpoint on HEAD.
