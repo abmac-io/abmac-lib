@@ -1,3 +1,4 @@
+#[cfg(feature = "alloc")]
 mod mpsc;
 mod ring;
 mod ring_chaining;

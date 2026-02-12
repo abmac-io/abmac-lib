@@ -320,6 +320,9 @@ impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRin
     }
 
     /// Flush all items to spout. Returns count flushed.
+    ///
+    /// Panic-safe: head is advanced after each item is sent, so a panic
+    /// in the spout will not cause double-reads during drop.
     #[inline]
     pub fn flush(&mut self) -> usize {
         let head = self.head.load_mut();
@@ -329,12 +332,14 @@ impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRin
             return 0;
         }
 
-        let h = head;
-        let _ = self.sink.get_mut().send_all((0..count).map(|i| unsafe {
-            (*self.buffer[(h.wrapping_add(i)) & (N - 1)].data.get()).assume_init_read()
-        }));
+        let sink = self.sink.get_mut();
+        for i in 0..count {
+            let idx = head.wrapping_add(i) & (N - 1);
+            let item = unsafe { (*self.buffer[idx].data.get()).assume_init_read() };
+            self.head.store_mut(head.wrapping_add(i + 1));
+            let _ = sink.send(item);
+        }
 
-        self.head.store_mut(tail);
         self.tail.store_mut(tail);
         count
     }
