@@ -290,7 +290,7 @@ where
 /// Iterator adapter for [`ParallelCold::iter_metadata`].
 pub struct ParallelMetadataIter<'a, CId, S, SId, const MAX_DEPS: usize>
 where
-    CId: Copy + Eq + Hash + core::fmt::Debug + 'a,
+    CId: Copy + Eq + Hash + Default + core::fmt::Debug + 'a,
     S: RecoverableStorage<CId, SId, MAX_DEPS> + 'a,
     SId: SessionId + 'a,
 {
@@ -300,7 +300,7 @@ where
 impl<'a, CId, S, SId, const MAX_DEPS: usize> Iterator
     for ParallelMetadataIter<'a, CId, S, SId, MAX_DEPS>
 where
-    CId: Copy + Eq + Hash + core::fmt::Debug,
+    CId: Copy + Eq + Hash + Default + core::fmt::Debug,
     S: RecoverableStorage<CId, SId, MAX_DEPS>,
     SId: SessionId,
 {
