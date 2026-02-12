@@ -1,6 +1,6 @@
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 
-use crate::{BytesError, FromBytes, ToBytes};
+use crate::{BytesError, FromBytes, ToBytes, traits::serialize_to_vec};
 
 /// A serializer that uses ToBytes/FromBytes traits.
 ///
@@ -17,21 +17,8 @@ impl ByteSerializer {
 
     /// Serialize a value to bytes.
     pub fn serialize<T: ToBytes>(&self, value: &T) -> Result<Vec<u8>, BytesError> {
-        let size = value.byte_len().or(T::MAX_SIZE).unwrap_or(256);
-        let mut buf = vec![0u8; size];
-        match value.to_bytes(&mut buf) {
-            Ok(written) => {
-                buf.truncate(written);
-                Ok(buf)
-            }
-            Err(BytesError::BufferTooSmall { needed, .. }) => {
-                buf.resize(needed, 0);
-                let written = value.to_bytes(&mut buf)?;
-                buf.truncate(written);
-                Ok(buf)
-            }
-            Err(e) => Err(e),
-        }
+        let hint = value.byte_len().or(T::MAX_SIZE).unwrap_or(256);
+        serialize_to_vec(value, hint)
     }
 
     /// Deserialize a value from bytes.

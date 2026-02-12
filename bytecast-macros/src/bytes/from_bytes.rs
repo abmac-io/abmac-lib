@@ -25,7 +25,7 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
 
     let body = match &input.data {
         Data::Struct(data) => {
-            let (reads, constructor) = generate_struct(name, &data.fields);
+            let (reads, constructor) = generate_struct(name, &data.fields)?;
             quote! {
                 #reads
                 Ok((#constructor, offset))
@@ -74,27 +74,30 @@ fn validate_enum(input: &DeriveInput, data: &syn::DataEnum) -> syn::Result<syn::
 }
 
 /// Generate a read statement for a single struct field.
-fn field_read(field: &syn::Field, var_name: &syn::Ident) -> TokenStream2 {
+fn field_read(field: &syn::Field, var_name: &syn::Ident) -> syn::Result<TokenStream2> {
     let field_type = &field.ty;
 
     if has_skip_attr(field) {
-        return quote! { let #var_name: #field_type = Default::default(); };
+        return Ok(quote! { let #var_name: #field_type = Default::default(); });
     }
 
-    let ser_type = serializable_type(field);
+    let ser_type = serializable_type(field)?;
     let read = quote! {
         let (val, consumed) = <#ser_type as bytecast::FromBytes>::from_bytes(&buf[offset..])?;
         offset += consumed;
     };
 
     if has_boxed_attr(field) {
-        quote! { #read let #var_name = Box::new(val); }
+        Ok(quote! { #read let #var_name = Box::new(val); })
     } else {
-        quote! { #read let #var_name = val; }
+        Ok(quote! { #read let #var_name = val; })
     }
 }
 
-fn generate_struct(name: &syn::Ident, fields: &Fields) -> (TokenStream2, TokenStream2) {
+fn generate_struct(
+    name: &syn::Ident,
+    fields: &Fields,
+) -> syn::Result<(TokenStream2, TokenStream2)> {
     match fields {
         Fields::Named(named) => {
             let reads: Vec<_> = named
@@ -104,12 +107,12 @@ fn generate_struct(name: &syn::Ident, fields: &Fields) -> (TokenStream2, TokenSt
                     let var = f.ident.clone().unwrap();
                     field_read(f, &var)
                 })
-                .collect();
+                .collect::<syn::Result<_>>()?;
             let field_names: Vec<_> = named.named.iter().map(|f| &f.ident).collect();
-            (
+            Ok((
                 quote! { #(#reads)* },
                 quote! { #name { #(#field_names),* } },
-            )
+            ))
         }
         Fields::Unnamed(unnamed) => {
             let var_names: Vec<_> = (0..unnamed.unnamed.len())
@@ -120,10 +123,10 @@ fn generate_struct(name: &syn::Ident, fields: &Fields) -> (TokenStream2, TokenSt
                 .iter()
                 .zip(&var_names)
                 .map(|(f, var)| field_read(f, var))
-                .collect();
-            (quote! { #(#reads)* }, quote! { #name(#(#var_names),*) })
+                .collect::<syn::Result<_>>()?;
+            Ok((quote! { #(#reads)* }, quote! { #name(#(#var_names),*) }))
         }
-        Fields::Unit => (quote! {}, quote! { #name }),
+        Fields::Unit => Ok((quote! {}, quote! { #name })),
     }
 }
 

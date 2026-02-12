@@ -27,7 +27,7 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         Data::Struct(data) => (
             generate_struct(&data.fields),
             generate_byte_len_struct(&data.fields),
-            generate_max_size_struct(&data.fields),
+            generate_max_size_struct(&data.fields)?,
         ),
         Data::Enum(data) => {
             let disc_ident = validate_enum(input, data)?;
@@ -147,19 +147,19 @@ fn generate_byte_len_struct(fields: &Fields) -> TokenStream2 {
     quote! { Some(0 #(+ #lens)*) }
 }
 
-fn generate_max_size_struct(fields: &Fields) -> TokenStream2 {
+fn generate_max_size_struct(fields: &Fields) -> syn::Result<TokenStream2> {
     let fields = active_fields(fields);
     if fields.is_empty() {
-        return quote! { Some(0) };
+        return Ok(quote! { Some(0) });
     }
     let sizes: Vec<_> = fields
         .iter()
         .map(|&(_, f)| {
-            let ty = serializable_type(f);
-            quote! { <#ty as bytecast::ToBytes>::MAX_SIZE }
+            let ty = serializable_type(f)?;
+            Ok(quote! { <#ty as bytecast::ToBytes>::MAX_SIZE })
         })
-        .collect();
-    quote! {
+        .collect::<syn::Result<_>>()?;
+    Ok(quote! {
         {
             const fn compute_max_size() -> Option<usize> {
                 let mut total = 0usize;
@@ -173,7 +173,7 @@ fn generate_max_size_struct(fields: &Fields) -> TokenStream2 {
             }
             compute_max_size()
         }
-    }
+    })
 }
 
 fn generate_enum(data: &syn::DataEnum, disc_type: &syn::Ident) -> TokenStream2 {

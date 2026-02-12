@@ -117,10 +117,15 @@ pub fn extract_box_inner(ty: &syn::Type) -> Option<&syn::Type> {
 }
 
 /// Resolve the serializable type for a field, accounting for `#[bytecast(boxed)]`.
-pub fn serializable_type(field: &syn::Field) -> &syn::Type {
+pub fn serializable_type(field: &syn::Field) -> syn::Result<&syn::Type> {
     if has_boxed_attr(field) {
-        extract_box_inner(&field.ty).expect("#[bytecast(boxed)] requires field type to be Box<T>")
+        extract_box_inner(&field.ty).ok_or_else(|| {
+            syn::Error::new_spanned(
+                &field.ty,
+                "#[bytecast(boxed)] requires field type to be Box<T>",
+            )
+        })
     } else {
-        &field.ty
+        Ok(&field.ty)
     }
 }

@@ -35,21 +35,8 @@ pub trait ToBytesExt: ToBytes {
     /// Serialize to a new Vec.
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Result<Vec<u8>, BytesError> {
-        let size = self.byte_len().or(Self::MAX_SIZE).unwrap_or(256);
-        let mut buf = alloc::vec![0u8; size];
-        match self.to_bytes(&mut buf) {
-            Ok(n) => {
-                buf.truncate(n);
-                Ok(buf)
-            }
-            Err(BytesError::BufferTooSmall { needed, .. }) => {
-                buf.resize(needed, 0);
-                let n = self.to_bytes(&mut buf)?;
-                buf.truncate(n);
-                Ok(buf)
-            }
-            Err(e) => Err(e),
-        }
+        let hint = self.byte_len().or(Self::MAX_SIZE).unwrap_or(256);
+        serialize_to_vec(self, hint)
     }
 
     /// Serialize to a fixed-size array.
@@ -88,3 +75,22 @@ pub trait FromBytesExt: FromBytes {
 }
 
 impl<T: FromBytes> FromBytesExt for T {}
+
+/// Serialize into a Vec, retrying once if the initial hint was too small.
+#[cfg(feature = "alloc")]
+pub(crate) fn serialize_to_vec(
+    value: &(impl ToBytes + ?Sized),
+    hint: usize,
+) -> Result<Vec<u8>, BytesError> {
+    let mut buf = alloc::vec![0u8; hint];
+    let n = match value.to_bytes(&mut buf) {
+        Ok(n) => n,
+        Err(BytesError::BufferTooSmall { needed, .. }) => {
+            buf.resize(needed, 0);
+            value.to_bytes(&mut buf)?
+        }
+        Err(e) => return Err(e),
+    };
+    buf.truncate(n);
+    Ok(buf)
+}
