@@ -75,20 +75,23 @@ impl<T: ToBytes, S: Spout<Vec<u8>, Error = core::convert::Infallible>> Spout<T> 
         // Write payload first to learn actual size
         let payload_written = item.to_bytes(&mut self.buf[FRAME_HEADER_SIZE..])?;
 
+        // Validate payload fits in u32 length field
+        let payload_len =
+            u32::try_from(payload_written).map_err(|_| BytesError::BufferTooSmall {
+                needed: payload_written,
+                available: u32::MAX as usize,
+            })?;
+
         // Write header: producer_id + payload length
         let mut cursor = ByteCursor::new(&mut self.buf[..FRAME_HEADER_SIZE]);
         cursor.write(&self.producer_id)?;
-        cursor.write(&(payload_written as u32))?;
+        cursor.write(&payload_len)?;
 
         // Truncate to actual frame size and reuse buffer
         let total = FRAME_HEADER_SIZE + payload_written;
         self.buf.truncate(total);
-        let frame = core::mem::replace(
-            &mut self.buf,
-            Vec::with_capacity(FRAME_HEADER_SIZE + payload_size),
-        );
         // Inner spout is infallible
-        let _ = self.inner.send(frame);
+        let _ = self.inner.send(self.buf.split_off(0));
         Ok(())
     }
 
