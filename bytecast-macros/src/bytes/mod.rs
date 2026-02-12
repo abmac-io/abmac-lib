@@ -177,6 +177,28 @@ pub fn reject_enum_field_attrs(data: &syn::DataEnum) -> syn::Result<()> {
     Ok(())
 }
 
+/// Reject `#[bytecast(skip)]` and `#[bytecast(boxed)]` on enum variant fields.
+/// These attributes are only supported on struct fields.
+pub fn reject_enum_field_attrs(data: &syn::DataEnum) -> syn::Result<()> {
+    for variant in &data.variants {
+        for field in variant.fields.iter() {
+            if has_bytecast_attr(field, "skip") {
+                return Err(syn::Error::new_spanned(
+                    field,
+                    "#[bytecast(skip)] is not supported on enum variant fields",
+                ));
+            }
+            if has_bytecast_attr(field, "boxed") {
+                return Err(syn::Error::new_spanned(
+                    field,
+                    "#[bytecast(boxed)] is not supported on enum variant fields",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Extract the inner type `T` from `Box<T>`.
 pub fn extract_box_inner(ty: &syn::Type) -> Option<&syn::Type> {
     let syn::Type::Path(type_path) = ty else {
