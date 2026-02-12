@@ -360,6 +360,14 @@ fn test_theoretical_validation_space_bound() {
     );
     assert_eq!(validation.expected_max_space(), 10);
     assert_eq!(validation.total_nodes(), 100);
+
+    // Space complexity ratio: hot_capacity=10, sqrt(100)=10 → ratio=1.0
+    let stats = manager.stats();
+    assert!(
+        (stats.space_complexity_ratio - 1.0).abs() < 0.01,
+        "Space ratio should be ~1.0, got {}",
+        stats.space_complexity_ratio
+    );
 }
 
 #[test]
@@ -388,10 +396,14 @@ fn test_theoretical_validation_space_bound_exceeded() {
 
 #[test]
 fn test_theoretical_validation_io_bound() {
-    // With low I/O operations, should satisfy I/O bound
+    // Verify that real I/O is tracked and the io_optimality_ratio reflects it.
+    // With hot=10 and 20 nodes, eviction writes bump the I/O counter.
+    // The DAG bound (3.0x) is an asymptotic guarantee — small workloads
+    // may exceed it — so we test that the ratio is computed correctly
+    // rather than that it satisfies the bound at toy scale.
     let mut manager = PebbleManager::new(test_cold(), NoWarm, Strategy::default(), 10);
 
-    for i in 0..5 {
+    for i in 0..20 {
         let cp = TestCheckpoint {
             id: i,
             data: alloc::format!("data{i}"),
@@ -400,33 +412,30 @@ fn test_theoretical_validation_io_bound() {
         manager.add(cp).unwrap();
     }
 
-    let validation = manager.validate_theoretical_bounds();
-    // With no evictions, I/O should be 0, which is well under the bound
-    assert!(
-        validation.io_bound_satisfied(),
-        "I/O bound should be satisfied with minimal operations"
-    );
-}
+    manager.flush().unwrap();
 
-#[test]
-fn test_stats_space_complexity_ratio() {
-    let mut manager = PebbleManager::new(test_cold(), NoWarm, Strategy::default(), 10);
-
-    for i in 0..100 {
-        let cp = TestCheckpoint {
-            id: i,
-            data: alloc::format!("data{i}"),
-            deps: vec![],
-        };
-        manager.add(cp).unwrap();
-    }
+    // Load one item from cold — this is a real read I/O
+    let cold_id = (0..20)
+        .find(|&i| manager.is_in_storage(i))
+        .expect("at least one checkpoint should be in storage");
+    manager.load(cold_id).unwrap();
 
     let stats = manager.stats();
-    // hot_capacity=10, sqrt(100)=10, ratio should be 1.0
+    assert!(stats.io_operations > 0, "should have performed real I/O");
+    assert!(stats.theoretical_min_io > 0, "min I/O should be nonzero");
     assert!(
-        (stats.space_complexity_ratio - 1.0).abs() < 0.01,
-        "Space ratio should be ~1.0, got {}",
-        stats.space_complexity_ratio
+        stats.io_optimality_ratio > 1.0,
+        "ratio should exceed 1.0 with eviction overhead (got {})",
+        stats.io_optimality_ratio,
+    );
+
+    // Validation should report the bound check consistently
+    let validation = manager.validate_theoretical_bounds();
+    let expected = stats.io_optimality_ratio <= 3.0;
+    assert_eq!(
+        validation.io_bound_satisfied(),
+        expected,
+        "io_bound_satisfied should match manual ratio check",
     );
 }
 

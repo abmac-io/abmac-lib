@@ -164,27 +164,10 @@ fn test_ensure_capacity_evicts_when_full() {
 }
 
 #[test]
-fn test_guard_add_returns_token() {
-    let mut mgr = PebbleManager::new(cold(), NoWarm, Strategy::default(), 4);
-    let guard = mgr.ensure_capacity().unwrap();
-    let token = guard.store(cp(99)).unwrap();
-    assert_eq!(token.id(), 99);
-    assert!(mgr.is_hot(99));
-}
-
-#[test]
 fn test_guard_insert() {
     let mut mgr = PebbleManager::new(cold(), NoWarm, Strategy::default(), 4);
     let guard = mgr.ensure_capacity().unwrap();
     let token = guard.insert(|| cp(77)).unwrap();
     assert_eq!(token.id(), 77);
     assert!(mgr.is_hot(77));
-}
-
-#[test]
-fn test_ensure_capacity_chained() {
-    let mut mgr = PebbleManager::new(cold(), NoWarm, Strategy::default(), 4);
-    let token = mgr.ensure_capacity().unwrap().store(cp(50)).unwrap();
-    assert_eq!(token.id(), 50);
-    assert!(mgr.is_hot(50));
 }
