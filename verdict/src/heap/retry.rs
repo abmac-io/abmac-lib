@@ -41,6 +41,19 @@ impl<E: core::fmt::Debug, Overflow: spout::Spout<Frame, Error = core::convert::I
     }
 }
 
+impl<
+    E: core::error::Error + 'static,
+    Overflow: spout::Spout<Frame, Error = core::convert::Infallible>,
+> core::error::Error for RetryOutcome<E, Overflow>
+{
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Permanent(e) => e.source(),
+            Self::Exhausted(e) => e.source(),
+        }
+    }
+}
+
 impl<E, Overflow: spout::Spout<Frame, Error = core::convert::Infallible>>
     RetryOutcome<E, Overflow>
 {
