@@ -928,8 +928,8 @@ fn builder_warm_capacity_configurable() {
     }
 
     let stats = manager.stats();
-    assert_eq!(stats.red_pebble_count(), 4);
-    assert_eq!(stats.warm_count(), 2);
+    assert_eq!(stats.red_pebble_count, 4);
+    assert_eq!(stats.warm_count, 2);
 
     // 7th add overflows warm -> write buffer
     manager
@@ -941,6 +941,6 @@ fn builder_warm_capacity_configurable() {
         .unwrap();
 
     let stats = manager.stats();
-    assert_eq!(stats.warm_count(), 2);
-    assert!(stats.write_buffer_count() > 0 || stats.blue_pebble_count() > 0);
+    assert_eq!(stats.warm_count, 2);
+    assert!(stats.write_buffer_count > 0 || stats.blue_pebble_count > 0);
 }
