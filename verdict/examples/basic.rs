@@ -70,8 +70,9 @@ fn main() {
 
     // Resolve determines if it's retryable.
     match err.resolve() {
-        Ok(temp) => println!("Retryable (temporary): {temp}"),
-        Err(perm) => println!("Not retryable (permanent): {perm}"),
+        verdict::Resolved::Temporary(temp) => println!("Retryable (temporary): {temp}"),
+        verdict::Resolved::Exhausted(ex) => println!("Exhausted (retries spent): {ex}"),
+        verdict::Resolved::Permanent(perm) => println!("Not retryable (permanent): {perm}"),
     }
 
     println!();
@@ -79,8 +80,9 @@ fn main() {
     // A permanent error resolves differently.
     let err = get_user(0).unwrap_err();
     match err.resolve() {
-        Ok(temp) => println!("Retryable: {temp}"),
-        Err(perm) => println!("Not retryable: {perm}"),
+        verdict::Resolved::Temporary(temp) => println!("Retryable: {temp}"),
+        verdict::Resolved::Exhausted(ex) => println!("Exhausted: {ex}"),
+        verdict::Resolved::Permanent(perm) => println!("Not retryable: {perm}"),
     }
 
     println!();

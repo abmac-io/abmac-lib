@@ -42,7 +42,7 @@ pub struct FrameRecord {
 pub struct LogRecord {
     /// Error message (via `Display`).
     pub error: String,
-    /// Status string (`"permanent"`, `"temporary"`, `"persistent"`).
+    /// Status string (`"permanent"`, `"temporary"`, `"exhausted"`).
     pub status: String,
     /// Whether the error is retryable.
     pub retryable: bool,
@@ -63,13 +63,13 @@ impl From<&Frame> for FrameRecord {
     }
 }
 
-impl<E, S, Overflow> From<&crate::Contextualized<E, S, Overflow>> for LogRecord
+impl<E, S, Overflow> From<&crate::Context<E, S, Overflow>> for LogRecord
 where
     E: Display + Actionable,
     S: Status,
     Overflow: Spout<Frame, Error = core::convert::Infallible>,
 {
-    fn from(ctx: &crate::Contextualized<E, S, Overflow>) -> Self {
+    fn from(ctx: &crate::Context<E, S, Overflow>) -> Self {
         let status = S::VALUE.unwrap_or_else(|| ctx.inner().status_value());
         Self {
             error: ctx.inner().to_string(),

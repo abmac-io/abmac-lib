@@ -4,7 +4,7 @@
 //!
 //! - `Dynamic`: Status not yet determined (runtime check required)
 //! - `Temporary`: Retryable error (may succeed on retry)
-//! - `Persistent`: Was temporary, retries exhausted
+//! - `Exhausted`: Was temporary, retries exhausted
 //! - `Permanent`: Never retryable (invalid input, not found, etc.)
 
 use core::fmt;
@@ -24,7 +24,7 @@ pub enum ErrorStatusValue {
     /// Error is temporary and may succeed on retry.
     Temporary = 1,
     /// Error was temporary but retries are exhausted.
-    Persistent = 2,
+    Exhausted = 2,
 }
 
 impl ErrorStatusValue {
@@ -40,7 +40,7 @@ impl ErrorStatusValue {
         match value {
             0 => Some(Self::Permanent),
             1 => Some(Self::Temporary),
-            2 => Some(Self::Persistent),
+            2 => Some(Self::Exhausted),
             _ => None,
         }
     }
@@ -51,7 +51,7 @@ impl ErrorStatusValue {
         match self {
             Self::Permanent => "permanent",
             Self::Temporary => "temporary",
-            Self::Persistent => "persistent",
+            Self::Exhausted => "exhausted",
         }
     }
 }
@@ -74,7 +74,7 @@ pub struct Temporary;
 
 /// Was temporary, retries exhausted.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Persistent;
+pub struct Exhausted;
 
 /// Permanent/non-retryable error.
 #[derive(Debug, Clone, Copy, Default)]
@@ -85,7 +85,7 @@ mod sealed {
     pub trait Sealed {}
     impl Sealed for super::Dynamic {}
     impl Sealed for super::Temporary {}
-    impl Sealed for super::Persistent {}
+    impl Sealed for super::Exhausted {}
     impl Sealed for super::Permanent {}
 }
 
@@ -119,12 +119,12 @@ impl Status for Temporary {
     }
 }
 
-impl Status for Persistent {
-    const VALUE: Option<ErrorStatusValue> = Some(ErrorStatusValue::Persistent);
+impl Status for Exhausted {
+    const VALUE: Option<ErrorStatusValue> = Some(ErrorStatusValue::Exhausted);
     const IS_RETRYABLE: Option<bool> = Some(false);
 
     fn name() -> &'static str {
-        "Persistent"
+        "Exhausted"
     }
 }
 
@@ -139,7 +139,7 @@ impl Status for Permanent {
 
 /// Marker trait for terminal (non-retryable) states.
 pub trait Terminal: Status {}
-impl Terminal for Persistent {}
+impl Terminal for Exhausted {}
 impl Terminal for Permanent {}
 
 /// Marker trait for non-terminal states.

@@ -28,7 +28,7 @@ fn main() {
         println!("attempt {attempt}...");
 
         if attempt < 3 {
-            Err(Contextualized::new(ServiceError).with_ctx("calling payment API"))
+            Err(Context::new(ServiceError).with_ctx("calling payment API"))
         } else {
             Ok("payment processed")
         }
@@ -50,7 +50,7 @@ fn main() {
         || {
             attempt += 1;
             println!("backoff attempt {attempt}...");
-            Err(Contextualized::new(ServiceError).with_ctx("calling inventory API"))
+            Err(Context::new(ServiceError).with_ctx("calling inventory API"))
         },
     );
 

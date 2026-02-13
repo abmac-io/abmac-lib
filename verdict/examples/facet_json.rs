@@ -31,7 +31,7 @@ actionable!(ApiError, self => {
 });
 
 fn main() {
-    let err = Contextualized::new(ApiError {
+    let err = Context::new(ApiError {
         code: 503,
         message: String::from("service unavailable"),
     })

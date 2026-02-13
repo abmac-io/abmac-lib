@@ -5,7 +5,7 @@ use core::fmt::{self, Display};
 
 use spout::DropSpout;
 
-use crate::{Actionable, Contextualized, Dynamic, Frame, Permanent, Persistent};
+use crate::{Actionable, Context, Dynamic, Exhausted, Frame, Permanent, Resolved};
 
 /// Outcome of a retry operation.
 #[non_exhaustive]
@@ -14,9 +14,9 @@ where
     Overflow: spout::Spout<Frame, Error = core::convert::Infallible>,
 {
     /// Error was permanent from the start.
-    Permanent(Contextualized<E, Permanent, Overflow>),
+    Permanent(Context<E, Permanent, Overflow>),
     /// Error was temporary but retries are exhausted.
-    Exhausted(Contextualized<E, Persistent, Overflow>),
+    Exhausted(Context<E, Exhausted, Overflow>),
 }
 
 impl<E: Display, Overflow: spout::Spout<Frame, Error = core::convert::Infallible>> Display
@@ -37,6 +37,19 @@ impl<E: core::fmt::Debug, Overflow: spout::Spout<Frame, Error = core::convert::I
         match self {
             Self::Permanent(e) => f.debug_tuple("Permanent").field(e).finish(),
             Self::Exhausted(e) => f.debug_tuple("Exhausted").field(e).finish(),
+        }
+    }
+}
+
+impl<
+    E: core::error::Error + 'static,
+    Overflow: spout::Spout<Frame, Error = core::convert::Infallible>,
+> core::error::Error for RetryOutcome<E, Overflow>
+{
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Permanent(e) => e.source(),
+            Self::Exhausted(e) => e.source(),
         }
     }
 }
@@ -90,7 +103,7 @@ impl<E, Overflow: spout::Spout<Frame, Error = core::convert::Infallible>>
 /// # Example
 ///
 /// ```
-/// use verdict::{with_retry, Actionable, ErrorStatusValue, Contextualized};
+/// use verdict::{with_retry, Actionable, ErrorStatusValue, Context};
 ///
 /// #[derive(Debug)]
 /// struct ApiError { retryable: bool }
@@ -115,7 +128,7 @@ impl<E, Overflow: spout::Spout<Frame, Error = core::convert::Infallible>>
 ///
 /// let result: Result<(), _> = with_retry(3, || {
 ///     // Simulate an operation
-///     Err(Contextualized::new(ApiError { retryable: true })
+///     Err(Context::new(ApiError { retryable: true })
 ///         .with_ctx("calling external API"))
 /// });
 ///
@@ -127,7 +140,7 @@ impl<E, Overflow: spout::Spout<Frame, Error = core::convert::Infallible>>
 pub fn with_retry<T, E, F>(max_attempts: u32, mut f: F) -> Result<T, RetryOutcome<E>>
 where
     E: Actionable,
-    F: FnMut() -> Result<T, Contextualized<E, Dynamic>>,
+    F: FnMut() -> Result<T, Context<E, Dynamic>>,
 {
     let max_attempts = max_attempts.max(1);
 
@@ -135,8 +148,9 @@ where
     let mut last_temp = match f() {
         Ok(v) => return Ok(v),
         Err(e) => match e.resolve() {
-            Ok(temp) => temp.with_ctx(format!("attempt 1/{max_attempts}")),
-            Err(perm) => return Err(RetryOutcome::Permanent(perm)),
+            Resolved::Temporary(temp) => temp.with_ctx(format!("attempt 1/{max_attempts}")),
+            Resolved::Exhausted(ex) => return Err(RetryOutcome::Exhausted(ex)),
+            Resolved::Permanent(perm) => return Err(RetryOutcome::Permanent(perm)),
         },
     };
 
@@ -144,10 +158,11 @@ where
         match f() {
             Ok(v) => return Ok(v),
             Err(e) => match e.resolve() {
-                Ok(temp) => {
+                Resolved::Temporary(temp) => {
                     last_temp = temp.with_ctx(format!("attempt {attempt}/{max_attempts}"));
                 }
-                Err(perm) => return Err(RetryOutcome::Permanent(perm)),
+                Resolved::Exhausted(ex) => return Err(RetryOutcome::Exhausted(ex)),
+                Resolved::Permanent(perm) => return Err(RetryOutcome::Permanent(perm)),
             },
         }
     }
@@ -169,7 +184,7 @@ pub fn with_retry_delay<T, E, F, D>(
 ) -> Result<T, RetryOutcome<E>>
 where
     E: Actionable,
-    F: FnMut() -> Result<T, Contextualized<E, Dynamic>>,
+    F: FnMut() -> Result<T, Context<E, Dynamic>>,
     D: FnMut(u32) -> std::time::Duration,
 {
     let max_attempts = max_attempts.max(1);
@@ -178,8 +193,9 @@ where
     let mut last_temp = match f() {
         Ok(v) => return Ok(v),
         Err(e) => match e.resolve() {
-            Ok(temp) => temp.with_ctx(format!("attempt 1/{max_attempts}")),
-            Err(perm) => return Err(RetryOutcome::Permanent(perm)),
+            Resolved::Temporary(temp) => temp.with_ctx(format!("attempt 1/{max_attempts}")),
+            Resolved::Exhausted(ex) => return Err(RetryOutcome::Exhausted(ex)),
+            Resolved::Permanent(perm) => return Err(RetryOutcome::Permanent(perm)),
         },
     };
 
@@ -189,10 +205,11 @@ where
         match f() {
             Ok(v) => return Ok(v),
             Err(e) => match e.resolve() {
-                Ok(temp) => {
+                Resolved::Temporary(temp) => {
                     last_temp = temp.with_ctx(format!("attempt {attempt}/{max_attempts}"));
                 }
-                Err(perm) => return Err(RetryOutcome::Permanent(perm)),
+                Resolved::Exhausted(ex) => return Err(RetryOutcome::Exhausted(ex)),
+                Resolved::Permanent(perm) => return Err(RetryOutcome::Permanent(perm)),
             },
         }
     }

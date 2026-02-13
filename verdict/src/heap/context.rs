@@ -57,7 +57,7 @@ use crate::{
 ///                        │ exhaust()
 ///                        ▼
 ///                  ┌──────────┐
-///                  │Exhausted │
+///                  │Exhausted│
 ///                  └──────────┘
 /// ```
 pub struct Context<
@@ -230,8 +230,9 @@ impl<E, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>>
     /// Add context with lazy message evaluation.
     #[must_use]
     #[track_caller]
-    pub fn with_ctx_lazy<F: FnOnce() -> String>(self, f: F) -> Self {
-        self.with_frame(Frame::here(f()))
+    pub fn with_ctx_lazy<F: FnOnce() -> String>(mut self, f: F) -> Self {
+        self.add_context(Frame::here(f()));
+        self
     }
 
     /// Add a pre-built frame.
@@ -296,20 +297,40 @@ impl<E, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>>
 
 // Dynamic State
 
+/// Result of resolving a [`Context<E, Dynamic>`] into a concrete status.
+///
+/// Returned by [`Context::resolve()`]. Each variant carries the context
+/// transitioned to the matching typestate.
+pub enum Resolved<E, Overflow: Spout<Frame, Error = core::convert::Infallible> = DropSpout> {
+    /// Error is temporary and may succeed on retry.
+    Temporary(Context<E, Temporary, Overflow>),
+    /// Error was temporary but retries are exhausted.
+    Exhausted(Context<E, Exhausted, Overflow>),
+    /// Error is permanent and should not be retried.
+    Permanent(Context<E, Permanent, Overflow>),
+}
+
+impl<E: Debug, Overflow: Spout<Frame, Error = core::convert::Infallible>> Debug
+    for Resolved<E, Overflow>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Temporary(c) => f.debug_tuple("Temporary").field(c).finish(),
+            Self::Exhausted(c) => f.debug_tuple("Exhausted").field(c).finish(),
+            Self::Permanent(c) => f.debug_tuple("Permanent").field(c).finish(),
+        }
+    }
+}
+
 impl<E: Actionable, Overflow: Spout<Frame, Error = core::convert::Infallible>>
     Context<E, Dynamic, Overflow>
 {
     /// Refine to a concrete status based on the error's status value.
-    ///
-    /// # Errors
-    ///
-    /// Returns the `Permanent` variant if the error is not retryable.
-    pub fn resolve(
-        self,
-    ) -> Result<Context<E, Temporary, Overflow>, Context<E, Permanent, Overflow>> {
+    pub fn resolve(self) -> Resolved<E, Overflow> {
         match self.error.status_value() {
-            ErrorStatusValue::Temporary => Ok(self.transition()),
-            _ => Err(self.transition()),
+            ErrorStatusValue::Temporary => Resolved::Temporary(self.transition()),
+            ErrorStatusValue::Exhausted => Resolved::Exhausted(self.transition()),
+            ErrorStatusValue::Permanent => Resolved::Permanent(self.transition()),
         }
     }
 
@@ -430,11 +451,16 @@ impl<
 // Bytecast serialization support
 
 #[cfg(feature = "bytecast")]
-impl<E: bytecast::ToBytes, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>>
-    bytecast::ToBytes for Context<E, S, Overflow>
+impl<
+    E: bytecast::ToBytes + Actionable,
+    S: Status,
+    Overflow: Spout<Frame, Error = core::convert::Infallible>,
+> bytecast::ToBytes for Context<E, S, Overflow>
 {
     fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, bytecast::BytesError> {
+        let status = S::VALUE.unwrap_or_else(|| self.error.status_value());
         let mut offset = 0;
+        offset += status.to_bytes(&mut buf[offset..])?;
         offset += self.error.to_bytes(&mut buf[offset..])?;
         offset += self.frames.to_bytes(&mut buf[offset..])?;
         offset += self.max_frames.to_bytes(&mut buf[offset..])?;
@@ -444,7 +470,8 @@ impl<E: bytecast::ToBytes, S: Status, Overflow: Spout<Frame, Error = core::conve
 
     fn byte_len(&self) -> Option<usize> {
         Some(
-            self.error.byte_len()?
+            ErrorStatusValue::MAX_SIZE?
+                + self.error.byte_len()?
                 + self.frames.byte_len()?
                 + self.max_frames.byte_len()?
                 + self.overflow_count.byte_len()?,
@@ -456,6 +483,8 @@ impl<E: bytecast::ToBytes, S: Status, Overflow: Spout<Frame, Error = core::conve
 impl<E: bytecast::FromBytes + Actionable> bytecast::FromBytes for Context<E, Dynamic, DropSpout> {
     fn from_bytes(buf: &[u8]) -> Result<(Self, usize), bytecast::BytesError> {
         let mut offset = 0;
+        let (_status, n) = ErrorStatusValue::from_bytes(&buf[offset..])?;
+        offset += n;
         let (error, n) = E::from_bytes(&buf[offset..])?;
         offset += n;
         let (frames, n) = VecDeque::<Frame>::from_bytes(&buf[offset..])?;
@@ -478,5 +507,66 @@ impl<E: bytecast::FromBytes + Actionable> bytecast::FromBytes for Context<E, Dyn
             },
             offset,
         ))
+    }
+}
+
+/// Decoded context with the correct typestate from serialized bytes.
+///
+/// There is no `Dynamic` variant because the wire format always carries a
+/// concrete status value — `Dynamic` only exists at the type level before
+/// [`Context::resolve()`] is called.
+#[cfg(feature = "bytecast")]
+pub enum DecodedContext<E> {
+    /// Status was `Temporary` (retryable).
+    Temporary(Context<E, Temporary, DropSpout>),
+    /// Status was `Exhausted` (retries exhausted).
+    Exhausted(Context<E, Exhausted, DropSpout>),
+    /// Status was `Permanent` (never retryable).
+    Permanent(Context<E, Permanent, DropSpout>),
+}
+
+/// Decode a serialized [`Context`] with the correct typestate.
+///
+/// Unlike `FromBytes for Context<E, Dynamic, DropSpout>` which always returns
+/// `Dynamic`, this function restores the status typestate that was present
+/// when the context was serialized.
+#[cfg(feature = "bytecast")]
+pub fn decode_context<E: bytecast::FromBytes + Actionable>(
+    buf: &[u8],
+) -> Result<(DecodedContext<E>, usize), bytecast::BytesError> {
+    use bytecast::FromBytes;
+
+    let mut offset = 0;
+    let (status, n) = ErrorStatusValue::from_bytes(&buf[offset..])?;
+    offset += n;
+    let (error, n) = E::from_bytes(&buf[offset..])?;
+    offset += n;
+    let (frames, n) = VecDeque::<Frame>::from_bytes(&buf[offset..])?;
+    offset += n;
+    let (max_frames, n) = usize::from_bytes(&buf[offset..])?;
+    offset += n;
+    let (overflow_count, n) = usize::from_bytes(&buf[offset..])?;
+    offset += n;
+
+    macro_rules! build {
+        ($status_type:ty, $variant:ident) => {{
+            let ctx = Context {
+                error,
+                frames,
+                overflow: DropSpout,
+                max_frames,
+                overflow_count,
+                #[cfg(feature = "std")]
+                backtrace: std::backtrace::Backtrace::disabled(),
+                _status: PhantomData::<$status_type>,
+            };
+            Ok((DecodedContext::$variant(ctx), offset))
+        }};
+    }
+
+    match status {
+        ErrorStatusValue::Temporary => build!(Temporary, Temporary),
+        ErrorStatusValue::Exhausted => build!(Exhausted, Exhausted),
+        ErrorStatusValue::Permanent => build!(Permanent, Permanent),
     }
 }

@@ -130,12 +130,12 @@ macro_rules! actionable {
 /// Early-return with a contextualized error.
 ///
 /// ```
-/// # use verdict::{bail, actionable, Actionable, ErrorStatusValue, Contextualized};
+/// # use verdict::{bail, actionable, Actionable, ErrorStatusValue, Context};
 /// #[derive(Debug)]
 /// struct InvalidInput;
 /// actionable!(InvalidInput, Permanent);
 ///
-/// fn validate(x: i32) -> Result<i32, Contextualized<InvalidInput>> {
+/// fn validate(x: i32) -> Result<i32, Context<InvalidInput>> {
 ///     if x < 0 { bail!(InvalidInput); }
 ///     Ok(x)
 /// }
@@ -147,19 +147,19 @@ macro_rules! actionable {
 #[macro_export]
 macro_rules! bail {
     ($err:expr) => {
-        return ::core::result::Result::Err($crate::Contextualized::new($err))
+        return ::core::result::Result::Err($crate::Context::new($err))
     };
 }
 
 /// Return early with a contextualized error if a condition is not met.
 ///
 /// ```
-/// # use verdict::{ensure, actionable, Actionable, ErrorStatusValue, Contextualized};
+/// # use verdict::{ensure, actionable, Actionable, ErrorStatusValue, Context};
 /// #[derive(Debug)]
 /// struct InvalidInput;
 /// actionable!(InvalidInput, Permanent);
 ///
-/// fn validate(x: i32) -> Result<i32, Contextualized<InvalidInput>> {
+/// fn validate(x: i32) -> Result<i32, Context<InvalidInput>> {
 ///     ensure!(x >= 0, InvalidInput);
 ///     Ok(x)
 /// }
@@ -179,7 +179,7 @@ macro_rules! ensure {
 
 // Core exports (no_std)
 pub use actionable::Actionable;
-pub use status::{Dynamic, ErrorStatusValue, Permanent, Persistent, Status, Temporary};
+pub use status::{Dynamic, ErrorStatusValue, Exhausted, Permanent, Status, Temporary};
 pub use status::{NonTerminal, Terminal};
 
 /// Common imports for typical usage.
@@ -192,7 +192,7 @@ pub mod prelude {
 
     #[cfg(feature = "alloc")]
     pub use crate::{
-        ContextExt, Contextualized, Ctx, Frame, FrameRecord, LogRecord, OptionExt, ResultExt,
+        Context, ContextExt, Ctx, Frame, FrameRecord, LogRecord, OptionExt, Resolved, ResultExt,
         RetryOutcome, bail, ensure, with_retry,
     };
 
@@ -206,7 +206,7 @@ pub use heap::*;
 
 /// Convenience alias for the common case: a contextualized error with dynamic status.
 #[cfg(feature = "alloc")]
-pub type Ctx<E> = Contextualized<E, Dynamic, spout::DropSpout>;
+pub type Ctx<E> = Context<E, Dynamic, spout::DropSpout>;
 
 #[cfg(test)]
 mod tests;

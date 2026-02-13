@@ -19,7 +19,7 @@ actionable!(DbError, Temporary);
 
 fn main() {
     // bounded() keeps the last N frames and silently drops older ones.
-    let err = Contextualized::bounded(DbError, 3)
+    let err = Context::bounded(DbError, 3)
         .with_ctx("query 1")
         .with_ctx("query 2")
         .with_ctx("query 3")
@@ -34,7 +34,7 @@ fn main() {
     println!();
 
     // bounded_collect() keeps the last N frames and saves older ones.
-    let err = Contextualized::bounded_collect(DbError, 3)
+    let err = Context::bounded_collect(DbError, 3)
         .with_ctx("step 1")
         .with_ctx("step 2")
         .with_ctx("step 3")

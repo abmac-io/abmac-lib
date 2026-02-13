@@ -62,7 +62,7 @@ fn get_user(id: u32) -> Result<String, Ctx<ApiError>> {
 
 ## Backtrace
 
-With the `std` feature, every `Contextualized` captures a backtrace at construction time. Backtraces are zero-cost when `RUST_BACKTRACE` is not set and appear automatically in `Display` output when enabled:
+With the `std` feature, every `Context` captures a backtrace at construction time. Backtraces are zero-cost when `RUST_BACKTRACE` is not set and appear automatically in `Display` output when enabled:
 
 ```
 API error 503
@@ -82,7 +82,7 @@ Errors carry compile-time status that prevents misuse:
 
 ```
        ┌─────────┐     ┌───────────┐     ┌───────────┐
-       │ Dynamic │────►│ Temporary │────►│ Persistent│
+       │ Dynamic │────►│ Temporary │────►│ Exhausted │
        └────┬────┘     └───────────┘     └───────────┘
             │           (retryable)     (retries exhausted)
             │
@@ -98,8 +98,9 @@ Errors carry compile-time status that prevents misuse:
 let ctx: Ctx<ApiError> = /* ... */;
 
 match ctx.resolve() {
-    Ok(temp) => { /* Contextualized<_, Temporary> — compiler knows it's retryable */ }
-    Err(perm) => { /* Contextualized<_, Permanent> — retry logic won't compile here */ }
+    Resolved::Temporary(temp) => { /* Context<_, Temporary> — retryable */ }
+    Resolved::Exhausted(ex) => { /* Context<_, Exhausted> — retries spent */ }
+    Resolved::Permanent(perm) => { /* Context<_, Permanent> — never retryable */ }
 }
 ```
 
@@ -133,14 +134,14 @@ By default, context frames grow unbounded. For memory-sensitive applications:
 
 ```rust
 // Keep last 8 frames, drop older ones
-let err = Contextualized::bounded(error, 8);
+let err = Context::bounded(error, 8);
 
 // Keep last 8 frames, collect older ones for inspection
-let err = Contextualized::bounded_collect(error, 8);
+let err = Context::bounded_collect(error, 8);
 let evicted = err.into_overflow().into_items();
 ```
 
-For custom overflow behavior (logging, channels, metrics), use `Contextualized::with_overflow` with any [`Spout`](https://docs.rs/spout) implementation.
+For custom overflow behavior (logging, channels, metrics), use `Context::with_overflow` with any [`Spout`](https://docs.rs/spout) implementation.
 
 ## Features
 

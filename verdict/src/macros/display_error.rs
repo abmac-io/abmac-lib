@@ -1,7 +1,7 @@
 /// Define an error enum with `Display` and `Error` impls.
 ///
-/// Unlike [`error!`], this macro does not generate an `Actionable` impl,
-/// making it suitable for crates that depend on verdict only optionally.
+/// Does not generate an `Actionable` impl, making it suitable for crates
+/// that depend on verdict only optionally.
 ///
 /// Each variant requires a `#[display("...")]` string with optional field
 /// interpolation.
