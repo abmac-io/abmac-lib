@@ -28,16 +28,27 @@ fn batch_sink_with_ring_chain() {
     // Reduces cascade traffic
     let batch_sink: BatchSpout<i32, CollectSpout<Vec<i32>>> =
         BatchSpout::new(100, CollectSpout::new());
-    let ring = SpillRing::<i32, 4, _>::with_sink(batch_sink);
+    let mut ring = SpillRing::<i32, 4, _>::with_sink(batch_sink);
 
     for i in 0..1000 {
         ring.push(i);
     }
 
-    // Evictions batched into groups of 100
+    // 996 evictions, batch size 100 → 9 full batches flushed, 96 buffered
     let batches = ring.sink().inner().items();
-    assert!(batches.len() >= 9); // ~996 evictions / 100 = 9+ batches
-    assert!(batches.iter().all(|b| b.len() <= 100));
+    assert_eq!(batches.len(), 9);
+    assert!(batches.iter().all(|b| b.len() == 100));
+
+    // Total evicted items should be 0..996 (first 996 of 1000)
+    let total_evicted: i32 = batches.iter().map(|b| b.len() as i32).sum();
+    assert_eq!(total_evicted, 900); // 9 * 100 flushed so far
+
+    // Ring should still have last 4 items
+    assert_eq!(ring.len(), 4);
+    assert_eq!(ring.pop(), Some(996));
+    assert_eq!(ring.pop(), Some(997));
+    assert_eq!(ring.pop(), Some(998));
+    assert_eq!(ring.pop(), Some(999));
 }
 
 #[cfg(feature = "std")]

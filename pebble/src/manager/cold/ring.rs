@@ -55,7 +55,7 @@ where
 
     /// Borrow the underlying storage (through the ring's spout).
     pub fn storage(&self) -> &S {
-        self.ring.sink()
+        self.ring.sink_ref()
     }
 
     /// Mutably borrow the underlying storage.
@@ -94,14 +94,14 @@ where
     }
 
     fn load(&self, id: T::Id) -> Result<T, Self::Error> {
-        let bytes = self.ring.sink().load(id)?;
+        let bytes = self.ring.sink_ref().load(id)?;
         self.serializer
             .deserialize(&bytes)
             .map_err(DirectStorageError::Serializer)
     }
 
     fn contains(&self, id: T::Id) -> bool {
-        self.ring.sink().contains(id)
+        self.ring.sink_ref().contains(id)
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
@@ -134,12 +134,12 @@ where
 
     fn iter_metadata(&self) -> Self::MetadataIter<'_> {
         RingMetadataIter {
-            inner: self.ring.sink().iter_metadata(),
+            inner: self.ring.sink_ref().iter_metadata(),
         }
     }
 
     fn get_metadata(&self, id: T::Id) -> Option<CheckpointMetadata<T::Id, SId, MAX_DEPS>> {
-        self.ring.sink().get_metadata(id)
+        self.ring.sink_ref().get_metadata(id)
     }
 }
 

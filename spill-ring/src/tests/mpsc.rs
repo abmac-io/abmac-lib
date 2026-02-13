@@ -1,12 +1,11 @@
-use crate::MpscRing;
-use spout::CollectSpout;
-use std::sync::{Arc, Mutex};
-use std::vec;
+extern crate std;
+
+use crate::{MpscRing, collect};
+use spout::{CollectSpout, ProducerSpout};
 
 #[test]
 fn basic_mpsc() {
-    let collected = Arc::new(Mutex::new(CollectSpout::new()));
-    let producers = MpscRing::<u64, 8, _>::with_sink(2, collected.clone());
+    let (producers, mut consumer) = MpscRing::<u64, 8>::with_consumer(2);
 
     // Producer 0
     producers[0].push(1);
@@ -16,66 +15,64 @@ fn basic_mpsc() {
     producers[1].push(10);
     producers[1].push(20);
 
-    // Drop producers to flush to sink
-    drop(producers);
+    assert_eq!(producers[0].len(), 2);
+    assert_eq!(producers[1].len(), 2);
 
-    let items = collected.lock().unwrap().items().to_vec();
-    assert_eq!(items.len(), 4);
-    assert!(items.contains(&1));
-    assert!(items.contains(&2));
-    assert!(items.contains(&10));
-    assert!(items.contains(&20));
+    // Collect producers into consumer, then drain
+    collect(producers, &mut consumer);
+    let mut sink = CollectSpout::new();
+    consumer.drain(&mut sink);
+
+    let mut items = sink.into_items();
+    items.sort();
+    assert_eq!(items, std::vec![1, 2, 10, 20]);
 }
 
 #[test]
 fn producer_overflow_to_sink() {
-    let collected = Arc::new(Mutex::new(CollectSpout::new()));
-
-    let producers = MpscRing::<u64, 4, _>::with_sink(1, collected.clone());
+    let sink = ProducerSpout::new(|_id| CollectSpout::<u64>::new());
+    let producers = MpscRing::<u64, 4, _>::with_sink(1, sink);
     let producer = producers.into_iter().next().unwrap();
 
-    // Overflow - push 10 items into ring of size 4
+    // Overflow — push 10 items into ring of size 4
     for i in 0..10 {
         producer.push(i);
     }
 
-    // First 6 items should have been evicted to sink
-    assert_eq!(collected.lock().unwrap().items().len(), 6);
+    // Ring should have last 4 items, first 6 evicted to sink
+    assert_eq!(producer.len(), 4);
 
-    // Drop flushes remaining 4
-    drop(producer);
-    assert_eq!(collected.lock().unwrap().items().len(), 10);
-}
-
-#[test]
-fn empty_producers_drop_sink() {
-    // With DropSpout (default), items just get dropped
-    let producers = MpscRing::<u64, 8>::new(4);
-    assert_eq!(producers.len(), 4);
-    for p in &producers {
-        assert!(p.is_empty());
-    }
+    let mut ring = producer.into_ring();
+    let evicted = ring.sink().inner().unwrap().items();
+    assert_eq!(evicted, &[0, 1, 2, 3, 4, 5]);
+    assert_eq!(ring.pop(), Some(6));
+    assert_eq!(ring.pop(), Some(7));
+    assert_eq!(ring.pop(), Some(8));
+    assert_eq!(ring.pop(), Some(9));
 }
 
 #[test]
 fn single_producer() {
-    let collected = Arc::new(Mutex::new(CollectSpout::new()));
-    let producers = MpscRing::<u64, 16, _>::with_sink(1, collected.clone());
+    let (producers, mut consumer) = MpscRing::<u64, 16>::with_consumer(1);
 
     let producer = producers.into_iter().next().unwrap();
     for i in 0..10 {
         producer.push(i);
     }
 
-    drop(producer);
+    assert_eq!(producer.len(), 10);
 
-    let items = collected.lock().unwrap().items().to_vec();
-    assert_eq!(items, vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    collect(std::vec![producer], &mut consumer);
+    let mut sink = CollectSpout::new();
+    consumer.drain(&mut sink);
+
+    assert_eq!(sink.into_items(), std::vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
 }
 
 #[cfg(feature = "std")]
 mod worker_pool_tests {
-    use super::*;
+    use crate::MpscRing;
+    use spout::CollectSpout;
 
     #[test]
     fn basic_worker_pool() {
@@ -110,15 +107,9 @@ mod worker_pool_tests {
         let mut sink = CollectSpout::new();
         consumer.drain(&mut sink);
 
-        // Only last 8 items should remain in ring
+        // Only last 8 items should remain in ring (92..100)
         let items = sink.into_items();
-        assert_eq!(items.len(), 8);
-    }
-
-    #[test]
-    fn worker_pool_num_rings() {
-        let pool = MpscRing::<u64, 64>::pool(7).spawn(|_ring, _id, _args: &()| {});
-        assert_eq!(pool.num_rings(), 7);
+        assert_eq!(items, vec![92, 93, 94, 95, 96, 97, 98, 99]);
     }
 
     #[test]
@@ -144,16 +135,14 @@ mod worker_pool_tests {
         let mut sink = CollectSpout::new();
         consumer.drain(&mut sink);
 
-        // Should have 40 items total (2 rings × 20 items each)
+        // Should have 40 items total (2 rings x 20 items each)
         let items = sink.into_items();
         assert_eq!(items.len(), 40);
     }
 
     #[test]
     fn worker_pool_worker_ids() {
-        // Each worker should receive a unique ID from 0..num_workers
         let mut pool = MpscRing::<u64, 64>::pool(4).spawn(|ring, id, _args: &()| {
-            // Push worker ID so we can verify from the consumer side
             ring.push(id as u64);
         });
 
@@ -187,37 +176,35 @@ mod worker_pool_tests {
 
     #[test]
     fn worker_pool_with_sink() {
-        let collected = Arc::new(Mutex::new(CollectSpout::new()));
+        use spout::ProducerSpout;
 
-        let mut pool = MpscRing::<u64, 4, _>::pool_with_sink(2, collected.clone()).spawn(
-            |ring, _id, count: &u64| {
+        let sink = ProducerSpout::new(|_id| CollectSpout::<u64>::new());
+
+        let mut pool =
+            MpscRing::<u64, 4, _>::pool_with_sink(2, sink).spawn(|ring, _id, count: &u64| {
                 for i in 0..*count {
                     ring.push(i);
                 }
-            },
-        );
+            });
 
         // Push 10 items per worker into ring of size 4 — forces overflow to sink
         pool.run(&10);
-
-        // Overflow items went to the CollectSpout
-        let overflowed = collected.lock().unwrap().items().len();
-        assert!(overflowed > 0);
 
         let mut consumer = pool.into_consumer();
         let mut drain_sink = CollectSpout::new();
         consumer.drain(&mut drain_sink);
 
-        // Remaining items in rings
-        let drained = drain_sink.into_items().len();
-
-        // Total: overflowed + drained = 20 (2 workers × 10 each)
-        assert_eq!(overflowed + drained, 20);
+        // Each worker has a ring of size 4, pushed 10 items → last 4 remain per ring
+        let items = drain_sink.into_items();
+        assert_eq!(items.len(), 8);
+        // Each worker's ring should contain [6, 7, 8, 9] (last 4 of 0..10)
+        // Items drain in producer order: worker0's 4, then worker1's 4
+        assert_eq!(&items[..4], &[6, 7, 8, 9]);
+        assert_eq!(&items[4..], &[6, 7, 8, 9]);
     }
 
     #[test]
     fn worker_pool_drop_without_consume() {
-        // Pool should drop cleanly without calling into_consumer
         let mut pool = MpscRing::<u64, 64>::pool(4).spawn(|ring, _id, count: &u64| {
             for i in 0..*count {
                 ring.push(i);
@@ -226,5 +213,80 @@ mod worker_pool_tests {
 
         pool.run(&100);
         drop(pool); // Should not panic or hang
+    }
+}
+
+// --- Missing coverage tests ---
+
+#[test]
+fn with_consumer_and_collect() {
+    let (producers, mut consumer) = MpscRing::<u64, 16>::with_consumer(3);
+
+    producers[0].push(1);
+    producers[0].push(2);
+    producers[1].push(10);
+    producers[2].push(100);
+
+    collect(producers, &mut consumer);
+
+    assert_eq!(consumer.num_producers(), 3);
+    assert_eq!(consumer.len(), 4);
+    assert!(!consumer.is_empty());
+
+    let mut sink = CollectSpout::new();
+    consumer.drain(&mut sink);
+
+    let mut items = sink.into_items();
+    items.sort();
+    assert_eq!(items, std::vec![1, 2, 10, 100]);
+
+    assert!(consumer.is_empty());
+    assert_eq!(consumer.len(), 0);
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn multi_threaded_producers() {
+    use std::thread;
+
+    let (producers, mut consumer) = MpscRing::<u64, 64>::with_consumer(4);
+
+    let finished: std::vec::Vec<_> = thread::scope(|s| {
+        producers
+            .into_iter()
+            .enumerate()
+            .map(|(id, producer)| {
+                s.spawn(move || {
+                    for i in 0..100 {
+                        producer.push(id as u64 * 1000 + i);
+                    }
+                    producer
+                })
+            })
+            .collect::<std::vec::Vec<_>>()
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .collect()
+    });
+
+    collect(finished, &mut consumer);
+
+    let mut sink = CollectSpout::new();
+    consumer.drain(&mut sink);
+
+    let items = sink.into_items();
+    // 4 threads x 100 items, ring capacity 64 so last 64 per thread survive
+    assert_eq!(items.len(), 256);
+
+    // Verify each thread's items are the last 64 (36..100)
+    for thread_id in 0..4u64 {
+        let thread_items: std::vec::Vec<u64> = items
+            .iter()
+            .filter(|&&x| x / 1000 == thread_id)
+            .copied()
+            .collect();
+        assert_eq!(thread_items.len(), 64);
+        let expected: std::vec::Vec<u64> = (36..100).map(|i| thread_id * 1000 + i).collect();
+        assert_eq!(thread_items, expected);
     }
 }

@@ -124,3 +124,27 @@ impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> core::it
     for SpillRingIterMut<'_, T, N, S>
 {
 }
+
+impl<'a, T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> IntoIterator
+    for &'a SpillRing<T, N, S>
+{
+    type Item = &'a T;
+    type IntoIter = SpillRingIter<'a, T, N, S>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        SpillRingIter::new(self)
+    }
+}
+
+impl<'a, T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> IntoIterator
+    for &'a mut SpillRing<T, N, S>
+{
+    type Item = &'a mut T;
+    type IntoIter = SpillRingIterMut<'a, T, N, S>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        SpillRingIterMut::new(self)
+    }
+}

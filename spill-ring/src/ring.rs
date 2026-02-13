@@ -67,7 +67,7 @@ impl<T, const N: usize> SpillRing<T, N, DropSpout> {
     /// Create a new ring buffer with pre-warmed cache (evicted items are dropped).
     #[must_use]
     pub fn new() -> Self {
-        let ring = Self::cold();
+        let mut ring = Self::cold();
         ring.warm();
         ring
     }
@@ -96,7 +96,7 @@ impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRin
     /// Create a new ring buffer with pre-warmed cache and a custom spout.
     #[must_use]
     pub fn with_sink(sink: S) -> Self {
-        let ring = Self::with_sink_cold(sink);
+        let mut ring = Self::with_sink_cold(sink);
         ring.warm();
         ring
     }
@@ -117,16 +117,16 @@ impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRin
     }
 
     /// Bring all ring slots into L1/L2 cache.
-    fn warm(&self) {
+    fn warm(&mut self) {
         for i in 0..N {
             unsafe {
-                let slot = &self.buffer[i];
-                let ptr = slot.data.get() as *mut u8;
+                let slot = &mut self.buffer[i];
+                let ptr = slot.data.get_mut() as *mut MaybeUninit<T> as *mut u8;
                 core::ptr::write_bytes(ptr, 0, core::mem::size_of::<MaybeUninit<T>>());
             }
         }
-        self.head.store(0);
-        self.tail.store(0);
+        self.head.store_mut(0);
+        self.tail.store_mut(0);
     }
 
     /// Push an item. If full, evicts oldest to spout.
@@ -320,6 +320,9 @@ impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRin
     }
 
     /// Flush all items to spout. Returns count flushed.
+    ///
+    /// Panic-safe: head is advanced after each item is sent, so a panic
+    /// in the spout will not cause double-reads during drop.
     #[inline]
     pub fn flush(&mut self) -> usize {
         let head = self.head.load_mut();
@@ -329,12 +332,14 @@ impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRin
             return 0;
         }
 
-        let h = head;
-        let _ = self.sink.get_mut().send_all((0..count).map(|i| unsafe {
-            (*self.buffer[(h.wrapping_add(i)) & (N - 1)].data.get()).assume_init_read()
-        }));
+        let sink = self.sink.get_mut();
+        for i in 0..count {
+            let idx = head.wrapping_add(i) & (N - 1);
+            let item = unsafe { (*self.buffer[idx].data.get()).assume_init_read() };
+            self.head.store_mut(head.wrapping_add(i + 1));
+            let _ = sink.send(item);
+        }
 
-        self.head.store_mut(tail);
         self.tail.store_mut(tail);
         count
     }
@@ -391,11 +396,26 @@ impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRin
         self.flush();
     }
 
+    /// Shared reference to the spout.
+    ///
+    /// # Safety contract
+    /// Safe to call when no `push`, `flush`, or other mutation is in
+    /// progress — guaranteed by Rust's borrow rules since `&self`
+    /// prevents any concurrent `&mut self` call.
+    #[inline]
+    #[must_use]
+    pub fn sink_ref(&self) -> &S {
+        // SAFETY: SpillRing is !Sync, so &self proves single-context
+        // access.  No &mut S alias can exist because that would
+        // require &mut self, which conflicts with this &self borrow.
+        unsafe { self.sink.get_ref() }
+    }
+
     /// Reference to the spout.
     #[inline]
     #[must_use]
-    pub fn sink(&self) -> &S {
-        self.sink.get_ref()
+    pub fn sink(&mut self) -> &S {
+        self.sink.get_mut()
     }
 
     /// Mutable reference to the spout.

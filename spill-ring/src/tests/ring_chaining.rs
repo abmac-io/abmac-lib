@@ -9,7 +9,7 @@ use spout::{CollectSpout, FnSpout};
 fn ring_chaining_basic() {
     // ring1 overflows into ring2
     let ring2: SpillRing<i32, 4> = SpillRing::new();
-    let ring1 = SpillRing::<i32, 2, _>::with_sink(ring2);
+    let mut ring1 = SpillRing::<i32, 2, _>::with_sink(ring2);
 
     ring1.push(1);
     ring1.push(2);
@@ -23,8 +23,8 @@ fn ring_chaining_basic() {
     assert_eq!(ring1.pop(), Some(4));
 
     // Access ring2 via sink
-    assert_eq!(ring1.sink().pop(), Some(1));
-    assert_eq!(ring1.sink().pop(), Some(2));
+    assert_eq!(ring1.sink_mut().pop(), Some(1));
+    assert_eq!(ring1.sink_mut().pop(), Some(2));
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn ring_chaining_cascade_overflow() {
     // When ring2 also overflows, items go to final sink
     let final_sink = CollectSpout::new();
     let ring2 = SpillRing::<i32, 2, _>::with_sink(final_sink);
-    let ring1 = SpillRing::<i32, 2, _>::with_sink(ring2);
+    let mut ring1 = SpillRing::<i32, 2, _>::with_sink(ring2);
 
     // Push 6 items through ring1 (cap 2) -> ring2 (cap 2) -> final_sink
     for i in 1..=6 {
@@ -44,9 +44,9 @@ fn ring_chaining_cascade_overflow() {
     // ring2: [3, 4] (evicted from ring1, overflow of 1,2 went to final_sink)
     // final_sink: [1, 2]
 
-    assert_eq!(ring1.sink().sink().items(), vec![1, 2]);
-    assert_eq!(ring1.sink().pop(), Some(3));
-    assert_eq!(ring1.sink().pop(), Some(4));
+    assert_eq!(ring1.sink_mut().sink().items(), vec![1, 2]);
+    assert_eq!(ring1.sink_mut().pop(), Some(3));
+    assert_eq!(ring1.sink_mut().pop(), Some(4));
     assert_eq!(ring1.pop(), Some(5));
     assert_eq!(ring1.pop(), Some(6));
 }
@@ -69,7 +69,7 @@ fn ring_chaining_flush_cascades() {
     // Flush ring2 -> items go to final_sink
     ring1.sink_mut().flush();
     assert!(ring1.sink().is_empty());
-    assert_eq!(ring1.sink().sink().items(), vec![1, 2, 3]);
+    assert_eq!(ring1.sink_mut().sink().items(), vec![1, 2, 3]);
 }
 
 #[test]

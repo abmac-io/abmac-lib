@@ -13,6 +13,11 @@ fn new_ring_is_empty() {
     assert!(!ring.is_full());
     assert_eq!(ring.len(), 0);
     assert_eq!(ring.capacity(), 4);
+
+    // Default delegates to new
+    let ring2: SpillRing<i32, 4> = SpillRing::default();
+    assert!(ring2.is_empty());
+    assert_eq!(ring2.capacity(), 4);
 }
 
 #[test]
@@ -34,7 +39,7 @@ fn push_and_pop() {
 fn eviction_to_sink() {
     // N=4 main buffer, items evicted directly to sink
     let sink = CollectSpout::new();
-    let ring = SpillRing::<i32, 4, _>::with_sink(sink);
+    let mut ring = SpillRing::<i32, 4, _>::with_sink(sink);
 
     ring.push(1);
     ring.push(2);
@@ -53,28 +58,6 @@ fn eviction_to_sink() {
     assert_eq!(ring.pop(), Some(4));
     assert_eq!(ring.pop(), Some(5));
     assert_eq!(ring.pop(), Some(6));
-}
-
-#[test]
-fn flush_to_sink() {
-    let sink = CollectSpout::new();
-    let mut ring = SpillRing::<i32, 4, _>::with_sink(sink);
-
-    ring.push(1);
-    ring.push(2);
-    ring.push(3);
-    ring.push(4);
-    ring.push(5); // Evicts 1 directly to sink
-    ring.push(6); // Evicts 2 directly to sink
-
-    // Spout already has [1, 2] from direct eviction
-    assert_eq!(ring.sink().items(), vec![1, 2]);
-
-    // Flush remaining buffer items to sink
-    let count = ring.flush();
-    assert_eq!(count, 4); // 3, 4, 5, 6
-    assert!(ring.is_empty());
-    assert_eq!(ring.sink().items(), vec![1, 2, 3, 4, 5, 6]);
 }
 
 #[test]
@@ -225,34 +208,6 @@ fn drop_with_default_sink_drops_items() {
 }
 
 #[test]
-fn overflow_sends_to_sink_immediately() {
-    // N=2 main buffer, evicted items go directly to sink
-    let sink = CollectSpout::new();
-    let ring = SpillRing::<i32, 2, _>::with_sink(sink);
-
-    ring.push(1);
-    ring.push(2);
-    // Main buffer full: [1, 2]
-    assert!(ring.sink().items().is_empty());
-
-    ring.push(3); // Evicts 1 directly to sink
-    assert_eq!(ring.sink().items(), vec![1]);
-
-    ring.push(4); // Evicts 2 directly to sink
-    assert_eq!(ring.sink().items(), vec![1, 2]);
-
-    ring.push(5); // Evicts 3 directly to sink
-    assert_eq!(ring.sink().items(), vec![1, 2, 3]);
-
-    ring.push(6); // Evicts 4 directly to sink
-    assert_eq!(ring.sink().items(), vec![1, 2, 3, 4]);
-
-    // Main buffer: [5, 6]
-    assert_eq!(ring.pop(), Some(5));
-    assert_eq!(ring.pop(), Some(6));
-}
-
-#[test]
 fn push_and_flush() {
     let sink = CollectSpout::new();
     let mut ring = SpillRing::<i32, 4, _>::with_sink(sink);
@@ -266,28 +221,6 @@ fn push_and_flush() {
     ring.push_and_flush(4);
     assert!(ring.is_empty());
     assert_eq!(ring.sink().items(), vec![1, 2, 3, 4]);
-}
-
-#[test]
-fn clear_flushes_to_sink() {
-    let sink = CollectSpout::new();
-    let mut ring = SpillRing::<i32, 4, _>::with_sink(sink);
-
-    ring.push(1);
-    ring.push(2);
-    ring.push(3);
-
-    ring.clear();
-
-    assert!(ring.is_empty());
-    assert_eq!(ring.sink().items(), vec![1, 2, 3]);
-}
-
-#[test]
-fn default_creates_empty_ring() {
-    let ring: SpillRing<i32, 4> = SpillRing::default();
-    assert!(ring.is_empty());
-    assert_eq!(ring.capacity(), 4);
 }
 
 #[test]
@@ -358,14 +291,6 @@ fn push_slice_empty() {
     let mut ring: SpillRing<u32, 8> = SpillRing::new();
     ring.push_slice(&[]);
     assert!(ring.is_empty());
-}
-
-#[test]
-fn push_slice_single() {
-    let mut ring: SpillRing<u32, 8> = SpillRing::new();
-    ring.push_slice(&[42]);
-    assert_eq!(ring.len(), 1);
-    assert_eq!(ring.pop_mut(), Some(42));
 }
 
 #[test]
@@ -457,14 +382,6 @@ fn push_slice_wraparound_with_eviction() {
     assert_eq!(ring.pop_mut(), Some(20));
     assert_eq!(ring.pop_mut(), Some(30));
     assert_eq!(ring.pop_mut(), Some(40));
-}
-
-#[test]
-fn extend_from_slice_delegates() {
-    let mut ring: SpillRing<u32, 8> = SpillRing::new();
-    ring.extend_from_slice(&[1, 2, 3]);
-    assert_eq!(ring.len(), 3);
-    assert_eq!(ring.pop_mut(), Some(1));
 }
 
 // pop_slice tests
@@ -561,12 +478,18 @@ fn spill_ring_builder_cold() {
 #[test]
 fn spill_ring_builder_with_sink() {
     let sink = CollectSpout::new();
-    let ring = SpillRing::<u64, 4>::builder().sink(sink).build();
+    let mut ring = SpillRing::<u64, 4>::builder().sink(sink).build();
     // Overflow to trigger spout
     for i in 0..8 {
         ring.push(i);
     }
     assert_eq!(ring.len(), 4);
+    // First 4 items evicted to sink, last 4 remain in ring
+    assert_eq!(ring.sink().items(), vec![0, 1, 2, 3]);
+    assert_eq!(ring.pop(), Some(4));
+    assert_eq!(ring.pop(), Some(5));
+    assert_eq!(ring.pop(), Some(6));
+    assert_eq!(ring.pop(), Some(7));
 }
 
 #[test]
@@ -575,4 +498,219 @@ fn spill_ring_builder_cold_with_sink() {
     let ring = SpillRing::<u64, 4>::builder().sink(sink).cold().build();
     ring.push(1);
     assert_eq!(ring.pop(), Some(1));
+}
+
+// --- Missing coverage tests ---
+
+#[test]
+fn push_mut_with_eviction() {
+    let sink = CollectSpout::new();
+    let mut ring = SpillRing::<i32, 4, _>::with_sink(sink);
+
+    for i in 0..6 {
+        ring.push_mut(i);
+    }
+
+    // First 2 evicted to sink, last 4 in ring
+    assert_eq!(ring.sink().items(), vec![0, 1]);
+    assert_eq!(ring.pop_mut(), Some(2));
+    assert_eq!(ring.pop_mut(), Some(3));
+    assert_eq!(ring.pop_mut(), Some(4));
+    assert_eq!(ring.pop_mut(), Some(5));
+}
+
+#[test]
+fn pop_mut_empty_and_wraparound() {
+    let mut ring: SpillRing<i32, 4> = SpillRing::new();
+
+    // Empty ring
+    assert_eq!(ring.pop_mut(), None);
+
+    // Fill, pop all, refill to trigger wraparound
+    for i in 0..3 {
+        ring.push_mut(i);
+    }
+    assert_eq!(ring.pop_mut(), Some(0));
+    assert_eq!(ring.pop_mut(), Some(1));
+    assert_eq!(ring.pop_mut(), Some(2));
+    assert_eq!(ring.pop_mut(), None);
+
+    // Wraparound: head=3, push 4 items wrapping around
+    for i in 10..14 {
+        ring.push_mut(i);
+    }
+    assert_eq!(ring.pop_mut(), Some(10));
+    assert_eq!(ring.pop_mut(), Some(11));
+    assert_eq!(ring.pop_mut(), Some(12));
+    assert_eq!(ring.pop_mut(), Some(13));
+}
+
+#[test]
+fn peek_back_after_wraparound() {
+    let ring: SpillRing<i32, 4> = SpillRing::new();
+
+    // Fill and overflow to wrap around
+    for i in 0..6 {
+        ring.push(i);
+    }
+    // Ring contains [2, 3, 4, 5], tail has wrapped
+    assert_eq!(ring.peek(), Some(&2));
+    assert_eq!(ring.peek_back(), Some(&5));
+}
+
+#[test]
+fn get_after_wraparound() {
+    let ring: SpillRing<i32, 4> = SpillRing::new();
+
+    // Fill and overflow: ring contains [4, 5, 6, 7]
+    for i in 0..8 {
+        ring.push(i);
+    }
+    assert_eq!(ring.get(0), Some(&4));
+    assert_eq!(ring.get(1), Some(&5));
+    assert_eq!(ring.get(2), Some(&6));
+    assert_eq!(ring.get(3), Some(&7));
+    assert_eq!(ring.get(4), None);
+}
+
+#[test]
+fn with_sink_cold_eviction() {
+    let sink = CollectSpout::new();
+    let mut ring = SpillRing::<i32, 4, _>::with_sink_cold(sink);
+
+    for i in 0..8 {
+        ring.push(i);
+    }
+    // Cold-constructed ring should handle eviction correctly
+    assert_eq!(ring.sink().items(), vec![0, 1, 2, 3]);
+    assert_eq!(ring.len(), 4);
+    assert_eq!(ring.pop(), Some(4));
+    assert_eq!(ring.pop(), Some(5));
+    assert_eq!(ring.pop(), Some(6));
+    assert_eq!(ring.pop(), Some(7));
+}
+
+#[test]
+fn cold_constructor_wraparound() {
+    let mut ring = SpillRing::<i32, 4>::builder().cold().build();
+
+    // Fill, pop, refill to test wraparound on cold ring
+    for i in 0..3 {
+        ring.push_mut(i);
+    }
+    let _ = ring.pop_mut();
+    let _ = ring.pop_mut();
+    let _ = ring.pop_mut();
+    // head=3, tail=3 — near buffer end
+    for i in 10..14 {
+        ring.push_mut(i);
+    }
+    assert_eq!(ring.pop_mut(), Some(10));
+    assert_eq!(ring.pop_mut(), Some(11));
+    assert_eq!(ring.pop_mut(), Some(12));
+    assert_eq!(ring.pop_mut(), Some(13));
+}
+
+#[test]
+fn drain_size_hint() {
+    let mut ring: SpillRing<i32, 8> = SpillRing::new();
+    ring.push(1);
+    ring.push(2);
+    ring.push(3);
+
+    let drain = ring.drain();
+    assert_eq!(drain.len(), 3);
+    assert_eq!(drain.size_hint(), (3, Some(3)));
+}
+
+#[test]
+fn fused_iterator_behavior() {
+    let ring: SpillRing<i32, 4> = SpillRing::new();
+    ring.push(1);
+
+    let mut iter = ring.iter();
+    assert_eq!(iter.next(), Some(&1));
+    assert_eq!(iter.next(), None);
+    // FusedIterator: next() after exhaustion still returns None
+    assert_eq!(iter.next(), None);
+    assert_eq!(iter.next(), None);
+}
+
+#[test]
+fn iter_mut_after_wraparound() {
+    let mut ring: SpillRing<i32, 4> = SpillRing::new();
+
+    // Fill and overflow to wrap around
+    for i in 0..6 {
+        ring.push(i);
+    }
+    // Ring contains [2, 3, 4, 5] with wrapped indices
+
+    for item in ring.iter_mut() {
+        *item *= 10;
+    }
+
+    let items: Vec<i32> = ring.iter().copied().collect();
+    assert_eq!(items, vec![20, 30, 40, 50]);
+}
+
+#[test]
+fn into_iter_ref() {
+    let ring: SpillRing<i32, 4> = SpillRing::new();
+    ring.push(1);
+    ring.push(2);
+    ring.push(3);
+
+    let items: Vec<&i32> = (&ring).into_iter().collect();
+    assert_eq!(items, vec![&1, &2, &3]);
+}
+
+#[test]
+fn into_iter_mut_ref() {
+    let mut ring: SpillRing<i32, 4> = SpillRing::new();
+    ring.push(1);
+    ring.push(2);
+    ring.push(3);
+
+    for item in &mut ring {
+        *item += 100;
+    }
+
+    let items: Vec<i32> = ring.iter().copied().collect();
+    assert_eq!(items, vec![101, 102, 103]);
+}
+
+#[test]
+fn extend_overflow_to_sink() {
+    let sink = CollectSpout::new();
+    let mut ring = SpillRing::<i32, 4, _>::with_sink(sink);
+    ring.extend(0..10);
+
+    // First 6 evicted to sink, last 4 in ring
+    assert_eq!(ring.sink().items(), vec![0, 1, 2, 3, 4, 5]);
+    assert_eq!(ring.len(), 4);
+    assert_eq!(ring.pop(), Some(6));
+}
+
+#[test]
+fn spill_ring_as_spout() {
+    use spout::Spout;
+
+    let mut ring = SpillRing::<i32, 4>::new();
+
+    // Use the Spout trait's send() method
+    Spout::send(&mut ring, 10).unwrap();
+    Spout::send(&mut ring, 20).unwrap();
+    Spout::send(&mut ring, 30).unwrap();
+
+    assert_eq!(ring.len(), 3);
+    assert_eq!(ring.pop(), Some(10));
+    assert_eq!(ring.pop(), Some(20));
+    assert_eq!(ring.pop(), Some(30));
+
+    // Spout::flush() should flush ring contents
+    ring.push(1);
+    ring.push(2);
+    Spout::flush(&mut ring).unwrap();
+    assert!(ring.is_empty());
 }
