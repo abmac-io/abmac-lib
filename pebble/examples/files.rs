@@ -61,11 +61,14 @@ impl FileStorage {
 }
 
 impl Spout<(u64, Vec<u8>)> for FileStorage {
-    fn send(&mut self, (id, bytes): (u64, Vec<u8>)) {
+    type Error = core::convert::Infallible;
+
+    fn send(&mut self, (id, bytes): (u64, Vec<u8>)) -> Result<(), Self::Error> {
         let path = self.path_for(id);
         fs::write(&path, &bytes).expect("write checkpoint file");
         self.written.insert(id, ());
         println!("  [disk] wrote {}", path.display());
+        Ok(())
     }
 }
 

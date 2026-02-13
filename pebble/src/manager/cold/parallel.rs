@@ -53,7 +53,7 @@ fn serialize_work<T, Ser, const N: usize, S>(
     T: Checkpointable,
     T::Id: Sync,
     Ser: CheckpointSerializer<T>,
-    S: Spout<(T::Id, Vec<u8>)>,
+    S: Spout<(T::Id, Vec<u8>), Error = core::convert::Infallible>,
 {
     for (i, (id, checkpoint)) in batch.items.iter().enumerate() {
         if i % batch.num_workers != worker_id {
@@ -97,7 +97,7 @@ pub struct ParallelCold<T, S, Ser, const N: usize>
 where
     T: Checkpointable + Send + Sync + 'static,
     T::Id: Send + Sync + 'static,
-    S: Spout<(T::Id, Vec<u8>)> + Clone + Send + 'static,
+    S: Spout<(T::Id, Vec<u8>), Error = core::convert::Infallible> + Clone + Send + 'static,
     Ser: CheckpointSerializer<T> + Clone + Sync + 'static,
     Ser::Error: Send + 'static,
 {
@@ -115,7 +115,11 @@ impl<T, S, Ser, const N: usize> ParallelCold<T, S, Ser, N>
 where
     T: Checkpointable + Send + Sync + 'static,
     T::Id: Send + Sync + 'static,
-    S: Spout<(T::Id, Vec<u8>)> + CheckpointLoader<T::Id> + Clone + Send + 'static,
+    S: Spout<(T::Id, Vec<u8>), Error = core::convert::Infallible>
+        + CheckpointLoader<T::Id>
+        + Clone
+        + Send
+        + 'static,
     Ser: CheckpointSerializer<T> + Clone + Send + Sync + 'static,
     Ser::Error: Send + 'static,
 {
@@ -198,7 +202,11 @@ impl<T, S, const N: usize> ParallelCold<T, S, crate::manager::BytecastSerializer
 where
     T: Checkpointable + bytecast::ToBytes + bytecast::FromBytes + Send + Sync + 'static,
     T::Id: Send + Sync + 'static,
-    S: Spout<(T::Id, Vec<u8>)> + CheckpointLoader<T::Id> + Clone + Send + 'static,
+    S: Spout<(T::Id, Vec<u8>), Error = core::convert::Infallible>
+        + CheckpointLoader<T::Id>
+        + Clone
+        + Send
+        + 'static,
 {
     /// Create a new parallel cold tier using `BytecastSerializer`.
     pub fn with_storage(storage: S, num_workers: usize) -> Self {
@@ -210,7 +218,11 @@ impl<T, S, Ser, const N: usize> ColdTier<T> for ParallelCold<T, S, Ser, N>
 where
     T: Checkpointable + Send + Sync + 'static,
     T::Id: Send + Sync + 'static,
-    S: Spout<(T::Id, Vec<u8>)> + CheckpointLoader<T::Id> + Clone + Send + 'static,
+    S: Spout<(T::Id, Vec<u8>), Error = core::convert::Infallible>
+        + CheckpointLoader<T::Id>
+        + Clone
+        + Send
+        + 'static,
     Ser: CheckpointSerializer<T> + Clone + Send + Sync + 'static,
     Ser::Error: Send + 'static,
 {
@@ -264,7 +276,11 @@ impl<T, S, Ser, SId, const N: usize, const MAX_DEPS: usize> RecoverableColdTier<
 where
     T: Checkpointable + Send + Sync + 'static,
     T::Id: Hash + Send + Sync + 'static,
-    S: Spout<(T::Id, Vec<u8>)> + RecoverableStorage<T::Id, SId, MAX_DEPS> + Clone + Send + 'static,
+    S: Spout<(T::Id, Vec<u8>), Error = core::convert::Infallible>
+        + RecoverableStorage<T::Id, SId, MAX_DEPS>
+        + Clone
+        + Send
+        + 'static,
     Ser: CheckpointSerializer<T> + Clone + Send + Sync + 'static,
     Ser::Error: Send + 'static,
     SId: SessionId,
@@ -319,7 +335,7 @@ impl<T, S, Ser, const N: usize> Drop for ParallelCold<T, S, Ser, N>
 where
     T: Checkpointable + Send + Sync + 'static,
     T::Id: Send + Sync + 'static,
-    S: Spout<(T::Id, Vec<u8>)> + Clone + Send + 'static,
+    S: Spout<(T::Id, Vec<u8>), Error = core::convert::Infallible> + Clone + Send + 'static,
     Ser: CheckpointSerializer<T> + Clone + Sync + 'static,
     Ser::Error: Send + 'static,
 {

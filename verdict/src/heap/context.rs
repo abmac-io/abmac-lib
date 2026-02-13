@@ -60,7 +60,11 @@ use crate::{
 ///                  │Exhausted │
 ///                  └──────────┘
 /// ```
-pub struct Context<E, S: Status = Dynamic, Overflow: Spout<Frame> = DropSpout> {
+pub struct Context<
+    E,
+    S: Status = Dynamic,
+    Overflow: Spout<Frame, Error = core::convert::Infallible> = DropSpout,
+> {
     error: E,
     frames: VecDeque<Frame>,
     overflow: Overflow,
@@ -131,7 +135,9 @@ impl<E: Actionable> Context<E, Dynamic, spout::CollectSpout<Frame>> {
     }
 }
 
-impl<E: Actionable, Overflow: Spout<Frame>> Context<E, Dynamic, Overflow> {
+impl<E: Actionable, Overflow: Spout<Frame, Error = core::convert::Infallible>>
+    Context<E, Dynamic, Overflow>
+{
     /// Create with custom overflow handling.
     ///
     /// When frames exceed `max_frames`, the oldest frame is evicted to the
@@ -156,7 +162,9 @@ impl<E: Actionable, Overflow: Spout<Frame>> Context<E, Dynamic, Overflow> {
 
 // Common Methods (all states)
 
-impl<E, S: Status, Overflow: Spout<Frame>> Context<E, S, Overflow> {
+impl<E, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>>
+    Context<E, S, Overflow>
+{
     /// Get a reference to the underlying error.
     #[must_use]
     pub fn inner(&self) -> &E {
@@ -237,7 +245,7 @@ impl<E, S: Status, Overflow: Spout<Frame>> Context<E, S, Overflow> {
         if self.frames.len() >= self.max_frames {
             // Evict oldest frame to overflow
             if let Some(evicted) = self.frames.pop_front() {
-                self.overflow.send(evicted);
+                let _ = self.overflow.send(evicted);
                 self.overflow_count += 1;
             }
         }
@@ -288,7 +296,9 @@ impl<E, S: Status, Overflow: Spout<Frame>> Context<E, S, Overflow> {
 
 // Dynamic State
 
-impl<E: Actionable, Overflow: Spout<Frame>> Context<E, Dynamic, Overflow> {
+impl<E: Actionable, Overflow: Spout<Frame, Error = core::convert::Infallible>>
+    Context<E, Dynamic, Overflow>
+{
     /// Refine to a concrete status based on the error's status value.
     ///
     /// # Errors
@@ -318,7 +328,7 @@ impl<E: Actionable, Overflow: Spout<Frame>> Context<E, Dynamic, Overflow> {
 
 // Temporary State
 
-impl<E, Overflow: Spout<Frame>> Context<E, Temporary, Overflow> {
+impl<E, Overflow: Spout<Frame, Error = core::convert::Infallible>> Context<E, Temporary, Overflow> {
     /// Mark retries as exhausted, transitioning to `Exhausted`.
     #[must_use]
     pub fn exhaust(self) -> Context<E, Exhausted, Overflow> {
@@ -334,7 +344,7 @@ impl<E, Overflow: Spout<Frame>> Context<E, Temporary, Overflow> {
 
 // Terminal States
 
-impl<E, Overflow: Spout<Frame>> Context<E, Exhausted, Overflow> {
+impl<E, Overflow: Spout<Frame, Error = core::convert::Infallible>> Context<E, Exhausted, Overflow> {
     /// Compile-time proof that this error is not retryable.
     #[must_use]
     pub const fn is_retryable(&self) -> bool {
@@ -342,7 +352,7 @@ impl<E, Overflow: Spout<Frame>> Context<E, Exhausted, Overflow> {
     }
 }
 
-impl<E, Overflow: Spout<Frame>> Context<E, Permanent, Overflow> {
+impl<E, Overflow: Spout<Frame, Error = core::convert::Infallible>> Context<E, Permanent, Overflow> {
     /// Compile-time proof that this error is not retryable.
     #[must_use]
     pub const fn is_retryable(&self) -> bool {
@@ -352,14 +362,18 @@ impl<E, Overflow: Spout<Frame>> Context<E, Permanent, Overflow> {
 
 // Trait Implementations
 
-impl<E: Actionable, S: Status, Overflow: Spout<Frame>> Actionable for Context<E, S, Overflow> {
+impl<E: Actionable, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>> Actionable
+    for Context<E, S, Overflow>
+{
     fn status_value(&self) -> ErrorStatusValue {
         // Use compile-time status if available, otherwise delegate
         S::VALUE.unwrap_or_else(|| self.error.status_value())
     }
 }
 
-impl<E: Display, S: Status, Overflow: Spout<Frame>> Display for Context<E, S, Overflow> {
+impl<E: Display, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>> Display
+    for Context<E, S, Overflow>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.error)?;
         for frame in &self.frames {
@@ -380,7 +394,9 @@ impl<E: Display, S: Status, Overflow: Spout<Frame>> Display for Context<E, S, Ov
     }
 }
 
-impl<E: Debug, S: Status, Overflow: Spout<Frame>> Debug for Context<E, S, Overflow> {
+impl<E: Debug, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>> Debug
+    for Context<E, S, Overflow>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = f.debug_struct("Context");
         s.field("error", &self.error)
@@ -400,8 +416,11 @@ impl<E: Actionable> From<E> for Context<E, Dynamic, DropSpout> {
     }
 }
 
-impl<E: core::error::Error + 'static, S: Status, Overflow: Spout<Frame>> core::error::Error
-    for Context<E, S, Overflow>
+impl<
+    E: core::error::Error + 'static,
+    S: Status,
+    Overflow: Spout<Frame, Error = core::convert::Infallible>,
+> core::error::Error for Context<E, S, Overflow>
 {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         Some(&self.error)
@@ -411,8 +430,8 @@ impl<E: core::error::Error + 'static, S: Status, Overflow: Spout<Frame>> core::e
 // Bytecast serialization support
 
 #[cfg(feature = "bytecast")]
-impl<E: bytecast::ToBytes, S: Status, Overflow: Spout<Frame>> bytecast::ToBytes
-    for Context<E, S, Overflow>
+impl<E: bytecast::ToBytes, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>>
+    bytecast::ToBytes for Context<E, S, Overflow>
 {
     fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, bytecast::BytesError> {
         let mut offset = 0;

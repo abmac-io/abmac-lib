@@ -11,7 +11,7 @@ use crate::{Actionable, Contextualized, Dynamic, Frame, Permanent, Persistent};
 #[non_exhaustive]
 pub enum RetryOutcome<E, Overflow = DropSpout>
 where
-    Overflow: spout::Spout<Frame>,
+    Overflow: spout::Spout<Frame, Error = core::convert::Infallible>,
 {
     /// Error was permanent from the start.
     Permanent(Contextualized<E, Permanent, Overflow>),
@@ -19,7 +19,9 @@ where
     Exhausted(Contextualized<E, Persistent, Overflow>),
 }
 
-impl<E: Display, Overflow: spout::Spout<Frame>> Display for RetryOutcome<E, Overflow> {
+impl<E: Display, Overflow: spout::Spout<Frame, Error = core::convert::Infallible>> Display
+    for RetryOutcome<E, Overflow>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Permanent(e) => write!(f, "{e}"),
@@ -28,8 +30,8 @@ impl<E: Display, Overflow: spout::Spout<Frame>> Display for RetryOutcome<E, Over
     }
 }
 
-impl<E: core::fmt::Debug, Overflow: spout::Spout<Frame>> core::fmt::Debug
-    for RetryOutcome<E, Overflow>
+impl<E: core::fmt::Debug, Overflow: spout::Spout<Frame, Error = core::convert::Infallible>>
+    core::fmt::Debug for RetryOutcome<E, Overflow>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -39,7 +41,9 @@ impl<E: core::fmt::Debug, Overflow: spout::Spout<Frame>> core::fmt::Debug
     }
 }
 
-impl<E, Overflow: spout::Spout<Frame>> RetryOutcome<E, Overflow> {
+impl<E, Overflow: spout::Spout<Frame, Error = core::convert::Infallible>>
+    RetryOutcome<E, Overflow>
+{
     /// Check if the outcome was due to a permanent error.
     #[must_use]
     pub fn is_permanent(&self) -> bool {

@@ -18,7 +18,11 @@ use super::barrier::SpinBarrier;
 /// [`MpscRing::pool_with_sink()`](super::MpscRing::pool_with_sink).
 /// Call [`spawn()`](PoolBuilder::spawn) to provide the work function and
 /// start the pool.
-pub struct PoolBuilder<T, const N: usize, S: Spout<T> = DropSpout> {
+pub struct PoolBuilder<
+    T,
+    const N: usize,
+    S: Spout<T, Error = core::convert::Infallible> = DropSpout,
+> {
     num_workers: usize,
     sink: S,
     _marker: PhantomData<T>,
@@ -35,7 +39,12 @@ impl<T: Send + 'static, const N: usize> PoolBuilder<T, N, DropSpout> {
     }
 }
 
-impl<T: Send + 'static, const N: usize, S: Spout<T> + Clone + Send + 'static> PoolBuilder<T, N, S> {
+impl<
+    T: Send + 'static,
+    const N: usize,
+    S: Spout<T, Error = core::convert::Infallible> + Clone + Send + 'static,
+> PoolBuilder<T, N, S>
+{
     pub(crate) fn with_sink(num_workers: usize, sink: S) -> Self {
         assert!(num_workers > 0, "must have at least one worker");
         Self {
@@ -88,7 +97,7 @@ impl<T: Send + 'static, const N: usize, S: Spout<T> + Clone + Send + 'static> Po
 /// pointer — no boxing, no cloning, no channels.
 pub struct WorkerPool<T, const N: usize, S, F, A>
 where
-    S: Spout<T>,
+    S: Spout<T, Error = core::convert::Infallible>,
     F: Fn(&SpillRing<T, N, S>, usize, &A) + Send + Clone + 'static,
     A: Sync + 'static,
 {
@@ -118,7 +127,7 @@ fn worker_loop<T, const N: usize, S, F, A>(
     ctx: WorkerCtx<A>,
 ) -> SpillRing<T, N, S>
 where
-    S: Spout<T>,
+    S: Spout<T, Error = core::convert::Infallible>,
     F: Fn(&SpillRing<T, N, S>, usize, &A),
 {
     let ring = SpillRing::with_sink(sink);
@@ -145,7 +154,7 @@ where
 impl<T, const N: usize, S, F, A> WorkerPool<T, N, S, F, A>
 where
     T: Send + 'static,
-    S: Spout<T> + Clone + Send + 'static,
+    S: Spout<T, Error = core::convert::Infallible> + Clone + Send + 'static,
     F: Fn(&SpillRing<T, N, S>, usize, &A) + Send + Clone + 'static,
     A: Sync + 'static,
 {
@@ -190,7 +199,7 @@ where
 
 impl<T, const N: usize, S, F, A> WorkerPool<T, N, S, F, A>
 where
-    S: Spout<T>,
+    S: Spout<T, Error = core::convert::Infallible>,
     F: Fn(&SpillRing<T, N, S>, usize, &A) + Send + Clone + 'static,
     A: Sync + 'static,
 {
@@ -242,7 +251,7 @@ where
 
 impl<T, const N: usize, S, F, A> Drop for WorkerPool<T, N, S, F, A>
 where
-    S: Spout<T>,
+    S: Spout<T, Error = core::convert::Infallible>,
     F: Fn(&SpillRing<T, N, S>, usize, &A) + Send + Clone + 'static,
     A: Sync + 'static,
 {

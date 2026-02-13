@@ -1,13 +1,13 @@
 //! Lossless delivery with backpressure.
 //!
-//! A SpillRing absorbs bursts; overflow spills to a bounded SyncChannelSpout.
+//! A SpillRing absorbs bursts; overflow spills to a bounded channel via FnSpout.
 //! The producer only blocks when both the ring AND the channel are full,
 //! meaning the consumer is genuinely falling behind.
 //!
 //! Run with: cargo run --example backpressure --features std
 
 use spill_ring::SpillRing;
-use spout::SyncChannelSpout;
+use spout::FnSpout;
 use std::sync::mpsc;
 use std::thread;
 
@@ -17,9 +17,12 @@ fn main() {
     // Bounded channel — blocks the producer when full.
     let (tx, rx) = mpsc::sync_channel::<u64>(1024);
 
-    // Ring absorbs bursts; overflow goes to the channel.
+    // Ring absorbs bursts; overflow goes to the channel via an infallible FnSpout.
     let mut ring = SpillRing::<u64, 256>::builder()
-        .sink(SyncChannelSpout::new(tx))
+        .sink(FnSpout(move |item: u64| {
+            // Blocking send — provides backpressure.
+            let _ = tx.send(item);
+        }))
         .build();
 
     let producer = thread::spawn(move || {

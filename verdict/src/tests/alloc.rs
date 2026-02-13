@@ -248,8 +248,8 @@ fn test_retry_permanent_stops_immediately() {
 fn test_frame_formatter() {
     let mut formatter = FrameFormatter::new();
 
-    formatter.send(Frame::message("frame 1"));
-    formatter.send(Frame::message("frame 2"));
+    let _ = formatter.send(Frame::message("frame 1"));
+    let _ = formatter.send(Frame::message("frame 2"));
 
     assert_eq!(formatter.count(), 2);
     assert!(formatter.as_str().contains("frame 1"));
@@ -261,9 +261,9 @@ fn test_counting_spout() {
     let counter = CountingSpout::new();
     let mut spout = &counter;
 
-    spout.send(Frame::message("a"));
-    spout.send(Frame::message("b"));
-    spout.send(Frame::message("c"));
+    let _ = spout.send(Frame::message("a"));
+    let _ = spout.send(Frame::message("b"));
+    let _ = spout.send(Frame::message("c"));
 
     assert_eq!(counter.count(), 3);
 
@@ -277,7 +277,7 @@ fn test_tee_spout() {
     let counter = CountingSpout::new();
     let mut tee = TeeSpout::new(collect, counter);
 
-    tee.send(Frame::message("test"));
+    let _ = tee.send(Frame::message("test"));
 
     let (collected, counter) = tee.into_inner();
     assert_eq!(collected.into_items().len(), 1);
@@ -496,7 +496,7 @@ fn test_frame_formatter_with_capacity() {
 #[test]
 fn test_frame_formatter_into_string() {
     let mut formatter = FrameFormatter::new();
-    formatter.send(Frame::message("test frame"));
+    let _ = formatter.send(Frame::message("test frame"));
 
     let s = formatter.into_string();
     assert!(s.contains("test frame"));
@@ -505,8 +505,8 @@ fn test_frame_formatter_into_string() {
 #[test]
 fn test_frame_formatter_clear() {
     let mut formatter = FrameFormatter::new();
-    formatter.send(Frame::message("frame 1"));
-    formatter.send(Frame::message("frame 2"));
+    let _ = formatter.send(Frame::message("frame 1"));
+    let _ = formatter.send(Frame::message("frame 2"));
 
     assert_eq!(formatter.count(), 2);
     assert!(!formatter.as_str().is_empty());
@@ -536,7 +536,7 @@ fn test_tee_spout_inner_mut() {
     let counter = CountingSpout::new();
     let mut tee = TeeSpout::new(collect, counter);
 
-    tee.send(Frame::message("test"));
+    let _ = tee.send(Frame::message("test"));
 
     let (a, b) = tee.inner_mut();
     assert_eq!(a.items().len(), 1);
@@ -552,8 +552,8 @@ fn test_log_spout() {
         logged.push(alloc::string::String::from(frame.msg()));
     });
 
-    spout.send(Frame::message("first"));
-    spout.send(Frame::message("second"));
+    let _ = spout.send(Frame::message("first"));
+    let _ = spout.send(Frame::message("second"));
 
     assert_eq!(logged.len(), 2);
     assert_eq!(logged[0], "first");

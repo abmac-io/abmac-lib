@@ -31,7 +31,7 @@ pub trait ResultExt<T, E> {
     /// # Errors
     ///
     /// Returns the original error wrapped in a bounded [`Contextualized`].
-    fn wrap_ctx_bounded<Overflow: Spout<Frame>>(
+    fn wrap_ctx_bounded<Overflow: Spout<Frame, Error = core::convert::Infallible>>(
         self,
         message: impl Into<String>,
         overflow: Overflow,
@@ -64,7 +64,7 @@ impl<T, E> ResultExt<T, E> for Result<T, E> {
     }
 
     #[track_caller]
-    fn wrap_ctx_bounded<Overflow: Spout<Frame>>(
+    fn wrap_ctx_bounded<Overflow: Spout<Frame, Error = core::convert::Infallible>>(
         self,
         message: impl Into<String>,
         overflow: Overflow,
@@ -79,7 +79,7 @@ impl<T, E> ResultExt<T, E> for Result<T, E> {
 }
 
 /// Extension trait for `Result<T, Contextualized<E, S, O>>` to add more context.
-pub trait ContextExt<T, E, S: Status, Overflow: Spout<Frame>> {
+pub trait ContextExt<T, E, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>> {
     /// Add context to an already-contextualized error.
     ///
     /// # Errors
@@ -98,8 +98,8 @@ pub trait ContextExt<T, E, S: Status, Overflow: Spout<Frame>> {
     ) -> Result<T, Contextualized<E, S, Overflow>>;
 }
 
-impl<T, E, S: Status, Overflow: Spout<Frame>> ContextExt<T, E, S, Overflow>
-    for Result<T, Contextualized<E, S, Overflow>>
+impl<T, E, S: Status, Overflow: Spout<Frame, Error = core::convert::Infallible>>
+    ContextExt<T, E, S, Overflow> for Result<T, Contextualized<E, S, Overflow>>
 {
     #[track_caller]
     fn with_ctx(self, message: impl Into<String>) -> Result<T, Contextualized<E, S, Overflow>> {

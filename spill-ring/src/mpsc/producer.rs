@@ -5,11 +5,11 @@ use spout::{DropSpout, Spout};
 ///
 /// Each producer owns its own [`SpillRing`] with zero contention.
 /// When dropped, remaining items stay in the ring for the consumer to drain.
-pub struct Producer<T, const N: usize, S: Spout<T> = DropSpout> {
+pub struct Producer<T, const N: usize, S: Spout<T, Error = core::convert::Infallible> = DropSpout> {
     ring: SpillRing<T, N, S>,
 }
 
-impl<T, const N: usize, S: Spout<T>> Producer<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> Producer<T, N, S> {
     /// Push an item to this producer's ring.
     ///
     /// This is the hot path - runs at ~4.6 Gelem/s.
@@ -55,7 +55,7 @@ impl<T, const N: usize> Producer<T, N, DropSpout> {
     }
 }
 
-impl<T, const N: usize, S: Spout<T>> Producer<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> Producer<T, N, S> {
     pub(crate) fn with_sink(sink: S) -> Self {
         Self {
             ring: SpillRing::with_sink(sink),

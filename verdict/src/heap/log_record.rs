@@ -67,7 +67,7 @@ impl<E, S, Overflow> From<&crate::Contextualized<E, S, Overflow>> for LogRecord
 where
     E: Display + Actionable,
     S: Status,
-    Overflow: Spout<Frame>,
+    Overflow: Spout<Frame, Error = core::convert::Infallible>,
 {
     fn from(ctx: &crate::Contextualized<E, S, Overflow>) -> Self {
         let status = S::VALUE.unwrap_or_else(|| ctx.inner().status_value());

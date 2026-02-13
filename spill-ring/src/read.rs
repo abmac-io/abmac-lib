@@ -7,7 +7,7 @@ use crate::iter::SpillRingIter;
 use crate::ring::SpillRing;
 use spout::Spout;
 
-impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRing<T, N, S> {
     /// Peek at the oldest item.
     #[inline]
     #[must_use]

@@ -23,9 +23,9 @@ fn producer_spout_creates_independent_spouts() {
     let mut s0 = s.clone();
     let mut s1 = s.clone();
 
-    s0.send(1);
-    s0.send(2);
-    s1.send(10);
+    let _ = s0.send(1);
+    let _ = s0.send(2);
+    let _ = s1.send(10);
 
     // Each has its own collected items
     assert_eq!(s0.inner().unwrap().items(), &[1, 2]);
@@ -50,9 +50,13 @@ fn producer_spout_flush_delegates() {
 
     struct FlushCounter;
     impl Spout<i32> for FlushCounter {
-        fn send(&mut self, _item: i32) {}
-        fn flush(&mut self) {
+        type Error = core::convert::Infallible;
+        fn send(&mut self, _item: i32) -> Result<(), Self::Error> {
+            Ok(())
+        }
+        fn flush(&mut self) -> Result<(), Self::Error> {
             FLUSH_COUNT.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
     }
 
@@ -62,12 +66,12 @@ fn producer_spout_flush_delegates() {
     let mut s0 = s.clone();
 
     // Flush before init is a no-op
-    s0.flush();
+    let _ = s0.flush();
     assert_eq!(FLUSH_COUNT.load(Ordering::SeqCst), 0);
 
     // Send initializes, then flush delegates
-    s0.send(1);
-    s0.flush();
+    let _ = s0.send(1);
+    let _ = s0.flush();
     assert_eq!(FLUSH_COUNT.load(Ordering::SeqCst), 1);
 }
 
@@ -76,7 +80,7 @@ fn producer_spout_into_inner() {
     let s = ProducerSpout::new(|_id| CollectSpout::<i32>::new());
     let mut s0 = s.clone();
 
-    s0.send(42);
+    let _ = s0.send(42);
 
     let inner = s0.into_inner().unwrap();
     assert_eq!(inner.items(), &[42]);

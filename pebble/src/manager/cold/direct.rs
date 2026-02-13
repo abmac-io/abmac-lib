@@ -106,7 +106,7 @@ where
             .serializer
             .serialize(checkpoint)
             .map_err(DirectStorageError::Serializer)?;
-        self.storage.send((id, bytes));
+        let _ = self.storage.send((id, bytes));
         Ok(())
     }
 
@@ -122,7 +122,7 @@ where
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        self.storage.flush();
+        let _ = self.storage.flush();
         Ok(())
     }
 

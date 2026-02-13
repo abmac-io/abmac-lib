@@ -22,7 +22,11 @@ use crate::SpillRing;
 /// // Cold (no cache warming)
 /// let ring = SpillRing::<u64, 256>::builder().cold().build();
 /// ```
-pub struct SpillRingBuilder<T, const N: usize, S: Spout<T> = DropSpout> {
+pub struct SpillRingBuilder<
+    T,
+    const N: usize,
+    S: Spout<T, Error = core::convert::Infallible> = DropSpout,
+> {
     sink: S,
     warm: bool,
     _marker: PhantomData<T>,
@@ -38,9 +42,12 @@ impl<T, const N: usize> SpillRingBuilder<T, N, DropSpout> {
     }
 }
 
-impl<T, const N: usize, S: Spout<T>> SpillRingBuilder<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRingBuilder<T, N, S> {
     /// Set a custom spout for handling evicted items.
-    pub fn sink<S2: Spout<T>>(self, sink: S2) -> SpillRingBuilder<T, N, S2> {
+    pub fn sink<S2: Spout<T, Error = core::convert::Infallible>>(
+        self,
+        sink: S2,
+    ) -> SpillRingBuilder<T, N, S2> {
         SpillRingBuilder {
             sink,
             warm: self.warm,

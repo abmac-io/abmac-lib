@@ -25,10 +25,11 @@ impl<T> ChannelSpout<T> {
 }
 
 impl<T> Spout<T> for ChannelSpout<T> {
+    type Error = mpsc::SendError<T>;
+
     #[inline]
-    fn send(&mut self, item: T) {
-        // Ignore send errors - receiver may have been dropped
-        let _ = self.sender.send(item);
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
+        self.sender.send(item)
     }
 }
 
@@ -78,11 +79,32 @@ impl<T> SyncChannelSpout<T> {
 }
 
 impl<T> Spout<T> for SyncChannelSpout<T> {
+    type Error = mpsc::SendError<T>;
+
     #[inline]
-    fn send(&mut self, item: T) {
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
         // Blocks when channel is full — this IS the backpressure.
-        // Ignores errors if receiver is dropped.
-        let _ = self.sender.send(item);
+        self.sender.send(item)
+    }
+}
+
+/// Error from an `Arc<Mutex<S>>` spout.
+///
+/// Wraps either the inner spout's error or a mutex poison error.
+#[derive(Debug)]
+pub enum MutexSpoutError<E> {
+    /// The inner spout returned an error.
+    Spout(E),
+    /// The mutex was poisoned by a panicked thread.
+    Poisoned,
+}
+
+impl<E: core::fmt::Display> core::fmt::Display for MutexSpoutError<E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Spout(e) => write!(f, "{e}"),
+            Self::Poisoned => write!(f, "mutex poisoned"),
+        }
     }
 }
 
@@ -91,13 +113,21 @@ impl<T> Spout<T> for SyncChannelSpout<T> {
 /// Allows multiple producers to share a single spout with mutex synchronization.
 /// Useful for MPSC patterns where all items should go to one collector.
 impl<T, S: Spout<T>> Spout<T> for std::sync::Arc<std::sync::Mutex<S>> {
+    type Error = MutexSpoutError<S::Error>;
+
     #[inline]
-    fn send(&mut self, item: T) {
-        self.lock().unwrap().send(item);
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
+        self.lock()
+            .map_err(|_| MutexSpoutError::Poisoned)?
+            .send(item)
+            .map_err(MutexSpoutError::Spout)
     }
 
     #[inline]
-    fn flush(&mut self) {
-        self.lock().unwrap().flush();
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.lock()
+            .map_err(|_| MutexSpoutError::Poisoned)?
+            .flush()
+            .map_err(MutexSpoutError::Spout)
     }
 }

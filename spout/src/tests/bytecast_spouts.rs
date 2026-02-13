@@ -13,7 +13,7 @@ use crate::{BatchSpout, CollectSpout, FramedSpout, Spout, decode_frame};
 fn framed_spout_sends_framed_bytes() {
     let mut s = FramedSpout::new(7, CollectSpout::<Vec<u8>>::new());
 
-    s.send(42u32);
+    let _ = s.send(42u32);
 
     let frames = s.inner().items();
     assert_eq!(frames.len(), 1);
@@ -27,9 +27,9 @@ fn framed_spout_sends_framed_bytes() {
 fn framed_spout_multiple_items() {
     let mut s = FramedSpout::new(0, CollectSpout::<Vec<u8>>::new());
 
-    s.send(10u32);
-    s.send(20u32);
-    s.send(30u32);
+    let _ = s.send(10u32);
+    let _ = s.send(20u32);
+    let _ = s.send(30u32);
 
     let frames = s.inner().items();
     assert_eq!(frames.len(), 3);
@@ -51,16 +51,20 @@ fn framed_spout_flush_delegates() {
 
     struct FlushTracker;
     impl Spout<Vec<u8>> for FlushTracker {
-        fn send(&mut self, _item: Vec<u8>) {}
-        fn flush(&mut self) {
+        type Error = core::convert::Infallible;
+        fn send(&mut self, _item: Vec<u8>) -> Result<(), Self::Error> {
+            Ok(())
+        }
+        fn flush(&mut self) -> Result<(), Self::Error> {
             FLUSH_COUNT.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
     }
 
     FLUSH_COUNT.store(0, Ordering::SeqCst);
 
     let mut s = FramedSpout::new(0, FlushTracker);
-    <FramedSpout<FlushTracker> as Spout<u32>>::flush(&mut s);
+    let _ = <FramedSpout<FlushTracker> as Spout<u32>>::flush(&mut s);
     assert_eq!(FLUSH_COUNT.load(Ordering::SeqCst), 1);
 }
 
@@ -74,7 +78,7 @@ fn framed_spout_accessors() {
 #[test]
 fn framed_spout_into_inner() {
     let mut s = FramedSpout::new(0, CollectSpout::<Vec<u8>>::new());
-    s.send(1u32);
+    let _ = s.send(1u32);
 
     let inner = s.into_inner();
     assert_eq!(inner.items().len(), 1);
@@ -88,11 +92,11 @@ fn batch_spout_to_bytes_empty_buffer() {
 
     let bytes = s.to_vec().unwrap();
 
-    // Should serialize threshold (4 bytes) + empty vec (1 byte varint length = 0)
+    // Should serialize threshold (8 bytes on wire via bytecast) + empty vec
     assert!(!bytes.is_empty());
 
     // Verify threshold round-trips
-    let (threshold, offset) = u32::from_bytes(&bytes).unwrap();
+    let (threshold, offset) = usize::from_bytes(&bytes).unwrap();
     assert_eq!(threshold, 10);
     assert!(offset > 0);
 }
@@ -101,14 +105,14 @@ fn batch_spout_to_bytes_empty_buffer() {
 fn batch_spout_to_bytes_with_buffered_items() {
     let mut s: BatchSpout<u32, CollectSpout<Vec<u32>>> = BatchSpout::new(100, CollectSpout::new());
 
-    s.send(1);
-    s.send(2);
-    s.send(3);
+    let _ = s.send(1);
+    let _ = s.send(2);
+    let _ = s.send(3);
 
     let bytes = s.to_vec().unwrap();
 
     // Decode: threshold then buffer
-    let (threshold, offset) = u32::from_bytes(&bytes).unwrap();
+    let (threshold, offset) = usize::from_bytes(&bytes).unwrap();
     assert_eq!(threshold, 100);
 
     let (buffer, _) = Vec::<u32>::from_bytes(&bytes[offset..]).unwrap();
@@ -126,8 +130,8 @@ fn fn_spout_with_to_bytes_serialization() {
         let mut s = FnSpout(|item: u32| {
             serialized.extend(item.to_vec().unwrap());
         });
-        s.send(1u32);
-        s.send(2u32);
+        let _ = s.send(1u32);
+        let _ = s.send(2u32);
     }
 
     // Each u32 is 4 bytes

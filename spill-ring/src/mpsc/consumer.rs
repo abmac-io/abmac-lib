@@ -10,11 +10,15 @@ use super::Producer;
 ///
 /// Collects producer rings and provides drain functionality.
 /// Use this when you need manual control over when items are consumed.
-pub struct Consumer<T, const N: usize, S: Spout<T> = spout::DropSpout> {
+pub struct Consumer<
+    T,
+    const N: usize,
+    S: Spout<T, Error = core::convert::Infallible> = spout::DropSpout,
+> {
     rings: Vec<SpillRing<T, N, S>>,
 }
 
-impl<T, const N: usize, S: Spout<T>> Consumer<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> Consumer<T, N, S> {
     pub(crate) fn new() -> Self {
         Self { rings: Vec::new() }
     }
@@ -26,11 +30,14 @@ impl<T, const N: usize, S: Spout<T>> Consumer<T, N, S> {
     /// Drain all items from all rings into a sink.
     ///
     /// Items are drained in producer order, then FIFO within each producer.
-    pub fn drain<Spout2: Spout<T>>(&mut self, sink: &mut Spout2) {
+    pub fn drain<Spout2: Spout<T, Error = core::convert::Infallible>>(
+        &mut self,
+        sink: &mut Spout2,
+    ) {
         for ring in &mut self.rings {
-            sink.send_all(ring.drain());
+            let _ = sink.send_all(ring.drain());
         }
-        sink.flush();
+        let _ = sink.flush();
     }
 
     /// Get the number of producers/rings.
@@ -52,7 +59,7 @@ impl<T, const N: usize, S: Spout<T>> Consumer<T, N, S> {
 /// Collect producers back into a consumer for draining.
 ///
 /// This is a helper to reunite producers with their consumer after threads complete.
-pub fn collect<T, const N: usize, S: Spout<T>>(
+pub fn collect<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>>(
     producers: impl IntoIterator<Item = Producer<T, N, S>>,
     consumer: &mut Consumer<T, N, S>,
 ) {

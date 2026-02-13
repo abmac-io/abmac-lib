@@ -35,14 +35,18 @@ pub(crate) const MAX_CAPACITY: usize = 1 << 20;
 /// Single-threaded ring using `Cell`-based indices. For multi-threaded use,
 /// see [`MpscRing`](crate::MpscRing).
 #[repr(C)]
-pub struct SpillRing<T, const N: usize, S: Spout<T> = DropSpout> {
+pub struct SpillRing<T, const N: usize, S: Spout<T, Error = core::convert::Infallible> = DropSpout>
+{
     pub(crate) head: CellIndex,
     pub(crate) tail: CellIndex,
     pub(crate) buffer: [Slot<T>; N],
     sink: SpoutCell<S>,
 }
 
-unsafe impl<T: Send, const N: usize, S: Spout<T> + Send> Send for SpillRing<T, N, S> {}
+unsafe impl<T: Send, const N: usize, S: Spout<T, Error = core::convert::Infallible> + Send> Send
+    for SpillRing<T, N, S>
+{
+}
 
 impl<T, const N: usize> SpillRing<T, N, DropSpout> {
     /// Create a builder for configuring a [`SpillRing`].
@@ -88,7 +92,7 @@ impl<T, const N: usize> SpillRing<T, N, DropSpout> {
     }
 }
 
-impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> SpillRing<T, N, S> {
     /// Create a new ring buffer with pre-warmed cache and a custom spout.
     #[must_use]
     pub fn with_sink(sink: S) -> Self {
@@ -137,7 +141,7 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
             let evict_idx = head & (N - 1);
             let evicted = unsafe { (*self.buffer[evict_idx].data.get()).assume_init_read() };
             self.head.store(head.wrapping_add(1));
-            unsafe { self.sink.get_mut_unchecked().send(evicted) };
+            let _ = unsafe { self.sink.get_mut_unchecked().send(evicted) };
         }
 
         let idx = tail & (N - 1);
@@ -155,7 +159,7 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
             let evict_idx = head & (N - 1);
             let evicted = unsafe { (*self.buffer[evict_idx].data.get()).assume_init_read() };
             self.head.store_mut(head.wrapping_add(1));
-            self.sink.get_mut().send(evicted);
+            let _ = self.sink.get_mut().send(evicted);
         }
 
         let idx = tail & (N - 1);
@@ -203,13 +207,13 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
             let len = tail.wrapping_sub(head);
             if len > 0 {
                 let h = head;
-                self.sink.get_mut().send_all((0..len).map(|i| unsafe {
+                let _ = self.sink.get_mut().send_all((0..len).map(|i| unsafe {
                     (*self.buffer[(h.wrapping_add(i)) & (N - 1)].data.get()).assume_init_read()
                 }));
             }
             let excess = items.len() - N;
             for &item in &items[..excess] {
-                self.sink.get_mut().send(item);
+                let _ = self.sink.get_mut().send(item);
             }
             head = head.wrapping_add(len);
             tail = head;
@@ -226,7 +230,8 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
         if keep.len() > free {
             let evict_count = keep.len() - free;
             let h = head;
-            self.sink
+            let _ = self
+                .sink
                 .get_mut()
                 .send_all((0..evict_count).map(|i| unsafe {
                     (*self.buffer[(h.wrapping_add(i)) & (N - 1)].data.get()).assume_init_read()
@@ -325,7 +330,7 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
         }
 
         let h = head;
-        self.sink.get_mut().send_all((0..count).map(|i| unsafe {
+        let _ = self.sink.get_mut().send_all((0..count).map(|i| unsafe {
             (*self.buffer[(h.wrapping_add(i)) & (N - 1)].data.get()).assume_init_read()
         }));
 
@@ -414,11 +419,13 @@ impl<T, const N: usize, S: Spout<T>> SpillRing<T, N, S> {
 }
 
 /// Draining iterator over a SpillRing.
-pub struct Drain<'a, T, const N: usize, S: Spout<T>> {
+pub struct Drain<'a, T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> {
     ring: &'a mut SpillRing<T, N, S>,
 }
 
-impl<T, const N: usize, S: Spout<T>> Iterator for Drain<'_, T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> Iterator
+    for Drain<'_, T, N, S>
+{
     type Item = T;
 
     #[inline]
@@ -433,9 +440,14 @@ impl<T, const N: usize, S: Spout<T>> Iterator for Drain<'_, T, N, S> {
     }
 }
 
-impl<T, const N: usize, S: Spout<T>> ExactSizeIterator for Drain<'_, T, N, S> {}
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> ExactSizeIterator
+    for Drain<'_, T, N, S>
+{
+}
 
-impl<T, const N: usize, S: Spout<T>> core::iter::Extend<T> for SpillRing<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> core::iter::Extend<T>
+    for SpillRing<T, N, S>
+{
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         for item in iter {
             self.push_mut(item);
@@ -450,26 +462,36 @@ impl<T, const N: usize> Default for SpillRing<T, N, DropSpout> {
 }
 
 /// SpillRing can act as a Spout, enabling ring chaining (ring1 -> ring2).
-impl<T, const N: usize, S: Spout<T>> Spout<T> for SpillRing<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> Spout<T>
+    for SpillRing<T, N, S>
+{
+    type Error = core::convert::Infallible;
+
     #[inline]
-    fn send(&mut self, item: T) {
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
         self.push_mut(item);
+        Ok(())
     }
 
     #[inline]
-    fn flush(&mut self) {
+    fn flush(&mut self) -> Result<(), Self::Error> {
         SpillRing::flush(self);
+        Ok(())
     }
 }
 
-impl<T, const N: usize, S: Spout<T>> Drop for SpillRing<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> Drop
+    for SpillRing<T, N, S>
+{
     fn drop(&mut self) {
         self.flush();
-        self.sink.get_mut().flush();
+        let _ = self.sink.get_mut().flush();
     }
 }
 
-impl<T, const N: usize, S: Spout<T>> RingInfo for SpillRing<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> RingInfo
+    for SpillRing<T, N, S>
+{
     #[inline]
     fn len(&self) -> usize {
         SpillRing::len(self)
@@ -481,7 +503,9 @@ impl<T, const N: usize, S: Spout<T>> RingInfo for SpillRing<T, N, S> {
     }
 }
 
-impl<T, const N: usize, S: Spout<T>> RingProducer<T> for SpillRing<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> RingProducer<T>
+    for SpillRing<T, N, S>
+{
     #[inline]
     fn try_push(&mut self, item: T) -> Result<(), crate::PushError<T>> {
         let tail = self.tail.load_mut();
@@ -501,7 +525,9 @@ impl<T, const N: usize, S: Spout<T>> RingProducer<T> for SpillRing<T, N, S> {
     }
 }
 
-impl<T, const N: usize, S: Spout<T>> RingConsumer<T> for SpillRing<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible>> RingConsumer<T>
+    for SpillRing<T, N, S>
+{
     #[inline]
     fn try_pop(&mut self) -> Option<T> {
         self.pop_mut()

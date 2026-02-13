@@ -59,16 +59,15 @@ impl FrameFormatter {
 }
 
 impl Spout<Frame> for FrameFormatter {
-    fn send(&mut self, frame: Frame) {
+    type Error = core::convert::Infallible;
+
+    fn send(&mut self, frame: Frame) -> Result<(), Self::Error> {
         if self.count > 0 {
             self.buffer.push('\n');
         }
         let _ = write!(self.buffer, "  |-> {frame}");
         self.count += 1;
-    }
-
-    fn flush(&mut self) {
-        // No-op for string buffer
+        Ok(())
     }
 }
 
@@ -100,23 +99,21 @@ impl CountingSpout {
 }
 
 impl<T> Spout<T> for CountingSpout {
-    fn send(&mut self, _item: T) {
-        self.count.fetch_add(1, Ordering::Relaxed);
-    }
+    type Error = core::convert::Infallible;
 
-    fn flush(&mut self) {
-        // No-op
+    fn send(&mut self, _item: T) -> Result<(), Self::Error> {
+        self.count.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 }
 
 // Allow shared counting across threads
 impl<T> Spout<T> for &CountingSpout {
-    fn send(&mut self, _item: T) {
-        self.count.fetch_add(1, Ordering::Relaxed);
-    }
+    type Error = core::convert::Infallible;
 
-    fn flush(&mut self) {
-        // No-op
+    fn send(&mut self, _item: T) -> Result<(), Self::Error> {
+        self.count.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 }
 
@@ -138,12 +135,11 @@ impl StderrSpout {
 
 #[cfg(feature = "std")]
 impl Spout<Frame> for StderrSpout {
-    fn send(&mut self, frame: Frame) {
-        std::eprintln!("[verdict overflow] {}", frame);
-    }
+    type Error = core::convert::Infallible;
 
-    fn flush(&mut self) {
-        // stderr is typically unbuffered, but we could call std::io::stderr().flush()
+    fn send(&mut self, frame: Frame) -> Result<(), Self::Error> {
+        std::eprintln!("[verdict overflow] {}", frame);
+        Ok(())
     }
 }
 
@@ -155,12 +151,11 @@ impl Spout<Frame> for StderrSpout {
 pub struct LogSpout<F>(pub F);
 
 impl<F: FnMut(Frame)> Spout<Frame> for LogSpout<F> {
-    fn send(&mut self, frame: Frame) {
-        (self.0)(frame);
-    }
+    type Error = core::convert::Infallible;
 
-    fn flush(&mut self) {
-        // No-op
+    fn send(&mut self, frame: Frame) -> Result<(), Self::Error> {
+        (self.0)(frame);
+        Ok(())
     }
 }
 
@@ -199,14 +194,23 @@ impl<A, B> TeeSpout<A, B> {
     }
 }
 
-impl<T: Clone, A: Spout<T>, B: Spout<T>> Spout<T> for TeeSpout<A, B> {
-    fn send(&mut self, item: T) {
-        self.a.send(item.clone());
-        self.b.send(item);
+impl<
+    T: Clone,
+    A: Spout<T, Error = core::convert::Infallible>,
+    B: Spout<T, Error = core::convert::Infallible>,
+> Spout<T> for TeeSpout<A, B>
+{
+    type Error = core::convert::Infallible;
+
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
+        let _ = self.a.send(item.clone());
+        let _ = self.b.send(item);
+        Ok(())
     }
 
-    fn flush(&mut self) {
-        self.a.flush();
-        self.b.flush();
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        let _ = self.a.flush();
+        let _ = self.b.flush();
+        Ok(())
     }
 }

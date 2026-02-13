@@ -175,8 +175,11 @@ fn drop_flushes_to_sink() {
 
     struct CountingSink;
     impl spout::Spout<i32> for CountingSink {
-        fn send(&mut self, _item: i32) {
+        type Error = core::convert::Infallible;
+
+        fn send(&mut self, _item: i32) -> Result<(), Self::Error> {
             SINK_COUNT.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
     }
 

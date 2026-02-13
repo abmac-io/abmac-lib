@@ -9,8 +9,12 @@ use crate::{Flush, Spout};
 pub struct DropSpout;
 
 impl<T> Spout<T> for DropSpout {
+    type Error = core::convert::Infallible;
+
     #[inline]
-    fn send(&mut self, _item: T) {}
+    fn send(&mut self, _item: T) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 /// Collects evicted items into a Vec.
@@ -42,14 +46,18 @@ impl<T> CollectSpout<T> {
 }
 
 impl<T> Spout<T> for CollectSpout<T> {
+    type Error = core::convert::Infallible;
+
     #[inline]
-    fn send(&mut self, item: T) {
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
         self.items.push(item);
+        Ok(())
     }
 
     #[inline]
-    fn send_all(&mut self, items: impl Iterator<Item = T>) {
+    fn send_all(&mut self, items: impl Iterator<Item = T>) -> Result<(), Self::Error> {
         self.items.extend(items);
+        Ok(())
     }
 }
 
@@ -58,9 +66,12 @@ impl<T> Spout<T> for CollectSpout<T> {
 pub struct FnSpout<F>(pub F);
 
 impl<T, F: FnMut(T)> Spout<T> for FnSpout<F> {
+    type Error = core::convert::Infallible;
+
     #[inline]
-    fn send(&mut self, item: T) {
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
         (self.0)(item);
+        Ok(())
     }
 }
 
@@ -79,14 +90,18 @@ impl<S, F> FnFlushSpout<S, F> {
 }
 
 impl<T, S: FnMut(T), F: Flush> Spout<T> for FnFlushSpout<S, F> {
+    type Error = core::convert::Infallible;
+
     #[inline]
-    fn send(&mut self, item: T) {
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
         (self.send)(item);
+        Ok(())
     }
 
     #[inline]
-    fn flush(&mut self) {
+    fn flush(&mut self) -> Result<(), Self::Error> {
         self.flush.flush();
+        Ok(())
     }
 }
 
@@ -172,17 +187,20 @@ where
     S: Spout<T>,
     F: FnMut(usize) -> S,
 {
+    type Error = S::Error;
+
     #[inline]
-    fn send(&mut self, item: T) {
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
         self.ensure_inner();
-        self.inner.as_mut().unwrap().send(item);
+        self.inner.as_mut().unwrap().send(item)
     }
 
     #[inline]
-    fn flush(&mut self) {
+    fn flush(&mut self) -> Result<(), Self::Error> {
         if let Some(inner) = &mut self.inner {
-            inner.flush();
+            inner.flush()?;
         }
+        Ok(())
     }
 }
 
@@ -239,22 +257,25 @@ impl<T, S> BatchSpout<T, S> {
 }
 
 impl<T, S: Spout<Vec<T>>> Spout<T> for BatchSpout<T, S> {
+    type Error = S::Error;
+
     #[inline]
-    fn send(&mut self, item: T) {
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
         self.buffer.push(item);
         if self.buffer.len() >= self.threshold {
             let batch = core::mem::replace(&mut self.buffer, Vec::with_capacity(self.threshold));
-            self.sink.send(batch);
+            self.sink.send(batch)?;
         }
+        Ok(())
     }
 
     #[inline]
-    fn flush(&mut self) {
+    fn flush(&mut self) -> Result<(), Self::Error> {
         if !self.buffer.is_empty() {
             let batch = core::mem::replace(&mut self.buffer, Vec::with_capacity(self.threshold));
-            self.sink.send(batch);
+            self.sink.send(batch)?;
         }
-        self.sink.flush();
+        self.sink.flush()
     }
 }
 
@@ -319,27 +340,30 @@ where
     F: FnMut(Vec<T>) -> R,
     S: Spout<R>,
 {
+    type Error = S::Error;
+
     #[inline]
-    fn send(&mut self, item: T) {
+    fn send(&mut self, item: T) -> Result<(), Self::Error> {
         self.buffer.push(item);
         if self.buffer.len() >= self.threshold {
             let reduced = (self.reduce)(core::mem::replace(
                 &mut self.buffer,
                 Vec::with_capacity(self.threshold),
             ));
-            self.sink.send(reduced);
+            self.sink.send(reduced)?;
         }
+        Ok(())
     }
 
     #[inline]
-    fn flush(&mut self) {
+    fn flush(&mut self) -> Result<(), Self::Error> {
         if !self.buffer.is_empty() {
             let reduced = (self.reduce)(core::mem::replace(
                 &mut self.buffer,
                 Vec::with_capacity(self.threshold),
             ));
-            self.sink.send(reduced);
+            self.sink.send(reduced)?;
         }
-        self.sink.flush();
+        self.sink.flush()
     }
 }

@@ -50,7 +50,7 @@ use spout::{DropSpout, Spout};
 ///
 /// Creates independent producers that each own a [`SpillRing`](crate::SpillRing)
 /// running at full speed. No shared state, no contention on the hot path.
-pub struct MpscRing<T, const N: usize, S: Spout<T> = DropSpout> {
+pub struct MpscRing<T, const N: usize, S: Spout<T, Error = core::convert::Infallible> = DropSpout> {
     _marker: core::marker::PhantomData<(T, S)>,
 }
 
@@ -152,7 +152,7 @@ impl<T, const N: usize> MpscRing<T, N, DropSpout> {
     }
 }
 
-impl<T, const N: usize, S: Spout<T> + Clone> MpscRing<T, N, S> {
+impl<T, const N: usize, S: Spout<T, Error = core::convert::Infallible> + Clone> MpscRing<T, N, S> {
     /// Create producers with a shared sink for handling evictions.
     ///
     /// Each producer gets a clone of the sink. Items overflow to the sink

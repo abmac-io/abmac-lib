@@ -163,7 +163,7 @@ impl<T, const N: usize> StealPool<T, N> {
         std::thread::spawn(move || {
             while let Some(mut ring) = pool.full.pop() {
                 drain_fn(&mut ring);
-                ring.clear_drop();
+                ring.clear();
                 pool.empty.return_ring(ring);
             }
         })

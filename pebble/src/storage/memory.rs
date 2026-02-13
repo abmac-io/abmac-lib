@@ -67,12 +67,15 @@ impl<CId: Copy + Eq + Hash + Default + core::fmt::Debug, SId: SessionId, const M
 impl<CId: Copy + Eq + Hash + Default + core::fmt::Debug, SId: SessionId, const MAX_DEPS: usize>
     Spout<(CId, Vec<u8>)> for InMemoryStorage<CId, SId, MAX_DEPS>
 {
-    fn send(&mut self, item: (CId, Vec<u8>)) {
+    type Error = core::convert::Infallible;
+
+    fn send(&mut self, item: (CId, Vec<u8>)) -> Result<(), Self::Error> {
         let (state_id, data) = item;
         let ts = self.next_timestamp;
         self.next_timestamp = ts.wrapping_add(1);
         let metadata = CheckpointMetadata::new(state_id, ts, SId::default());
         self.store_with_metadata(state_id, data, metadata);
+        Ok(())
     }
 }
 

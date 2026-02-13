@@ -15,9 +15,9 @@ use crate::{BatchSpout, CollectSpout, DropSpout, FnSpout, ReduceSpout, Spout, sp
 #[test]
 fn drop_spout_accepts_items() {
     let mut s = DropSpout;
-    s.send(1);
-    s.send(2);
-    s.send(3);
+    let _ = s.send(1);
+    let _ = s.send(2);
+    let _ = s.send(3);
     // Items are dropped, no way to verify except that it compiles
 }
 
@@ -26,9 +26,9 @@ fn fn_spout_calls_closure() {
     let mut collected = Vec::new();
     {
         let mut s = FnSpout(|x: i32| collected.push(x));
-        s.send(1);
-        s.send(2);
-        s.send(3);
+        let _ = s.send(1);
+        let _ = s.send(2);
+        let _ = s.send(3);
     }
     assert_eq!(collected, vec![1, 2, 3]);
 }
@@ -36,22 +36,22 @@ fn fn_spout_calls_closure() {
 #[test]
 fn collect_spout_gathers_items() {
     let mut s = CollectSpout::new();
-    s.send(10);
-    s.send(20);
-    s.send(30);
+    let _ = s.send(10);
+    let _ = s.send(20);
+    let _ = s.send(30);
     assert_eq!(s.items(), vec![10, 20, 30]);
 }
 
 #[test]
 fn spout_with_different_types() {
     let mut string_spout = CollectSpout::new();
-    string_spout.send("hello");
-    string_spout.send("world");
+    let _ = string_spout.send("hello");
+    let _ = string_spout.send("world");
     assert_eq!(string_spout.items(), vec!["hello", "world"]);
 
     let mut tuple_spout = CollectSpout::new();
-    tuple_spout.send((1, "a"));
-    tuple_spout.send((2, "b"));
+    let _ = tuple_spout.send((1, "a"));
+    let _ = tuple_spout.send((2, "b"));
     assert_eq!(tuple_spout.items(), vec![(1, "a"), (2, "b")]);
 }
 
@@ -74,16 +74,16 @@ fn fn_flush_spout_calls_both_closures() {
         },
     );
 
-    s.send(1);
-    s.send(2);
-    s.send(3);
+    let _ = s.send(1);
+    let _ = s.send(2);
+    let _ = s.send(3);
     assert_eq!(SEND_COUNT.load(Ordering::SeqCst), 3);
     assert_eq!(FLUSH_COUNT.load(Ordering::SeqCst), 0);
 
-    s.flush();
+    let _ = s.flush();
     assert_eq!(FLUSH_COUNT.load(Ordering::SeqCst), 1);
 
-    s.flush();
+    let _ = s.flush();
     assert_eq!(FLUSH_COUNT.load(Ordering::SeqCst), 2);
 }
 
@@ -93,9 +93,9 @@ fn fn_flush_spout_with_unit_flush() {
     {
         // Using () for flush (no-op)
         let mut s = spout(|x: i32| collected.push(x), ());
-        s.send(10);
-        s.send(20);
-        s.flush(); // Should be a no-op
+        let _ = s.send(10);
+        let _ = s.send(20);
+        let _ = s.flush(); // Should be a no-op
     }
     assert_eq!(collected, vec![10, 20]);
 }
@@ -103,28 +103,28 @@ fn fn_flush_spout_with_unit_flush() {
 #[test]
 fn drop_spout_flush_is_noop() {
     let mut s = DropSpout;
-    <DropSpout as Spout<i32>>::flush(&mut s); // Should not panic
+    let _ = <DropSpout as Spout<i32>>::flush(&mut s); // Should not panic
 }
 
 #[test]
 fn batch_spout_batches_items() {
     let mut s: BatchSpout<i32, CollectSpout<Vec<i32>>> = BatchSpout::new(3, CollectSpout::new());
 
-    s.send(1);
-    s.send(2);
+    let _ = s.send(1);
+    let _ = s.send(2);
     // Not yet forwarded
     assert_eq!(s.inner().items().len(), 0);
     assert_eq!(s.buffered(), 2);
 
-    s.send(3);
+    let _ = s.send(3);
     // Batch forwarded
     assert_eq!(s.inner().items(), vec![vec![1, 2, 3]]);
     assert_eq!(s.buffered(), 0);
 
-    s.send(4);
-    s.send(5);
+    let _ = s.send(4);
+    let _ = s.send(5);
     // Flush remaining
-    s.flush();
+    let _ = s.flush();
     assert_eq!(s.into_inner().into_items(), vec![vec![1, 2, 3], vec![4, 5]]);
 }
 
@@ -132,10 +132,10 @@ fn batch_spout_batches_items() {
 fn batch_spout_exact_threshold() {
     let mut s: BatchSpout<i32, CollectSpout<Vec<i32>>> = BatchSpout::new(2, CollectSpout::new());
 
-    s.send(1);
-    s.send(2);
-    s.send(3);
-    s.send(4);
+    let _ = s.send(1);
+    let _ = s.send(2);
+    let _ = s.send(3);
+    let _ = s.send(4);
 
     assert_eq!(s.inner().items(), vec![vec![1, 2], vec![3, 4]]);
 }
@@ -143,7 +143,7 @@ fn batch_spout_exact_threshold() {
 #[test]
 fn batch_spout_flush_empty_is_noop() {
     let mut s: BatchSpout<i32, CollectSpout<Vec<i32>>> = BatchSpout::new(10, CollectSpout::new());
-    s.flush();
+    let _ = s.flush();
     assert!(s.into_inner().into_items().is_empty());
 }
 
@@ -156,9 +156,9 @@ fn reduce_spout_reduces_batches() {
     );
 
     for i in 1..=8 {
-        s.send(i);
+        let _ = s.send(i);
     }
-    s.flush();
+    let _ = s.flush();
 
     // [1+2+3+4=10, 5+6+7+8=26]
     assert_eq!(s.into_inner().into_items(), vec![10, 26]);
@@ -168,10 +168,10 @@ fn reduce_spout_reduces_batches() {
 fn reduce_spout_flush_partial() {
     let mut s = ReduceSpout::new(5, |batch: Vec<i32>| batch.len() as i32, CollectSpout::new());
 
-    s.send(1);
-    s.send(2);
-    s.send(3);
-    s.flush();
+    let _ = s.send(1);
+    let _ = s.send(2);
+    let _ = s.send(3);
+    let _ = s.flush();
 
     // Partial batch of 3 items
     assert_eq!(s.into_inner().into_items(), vec![3]);
@@ -187,11 +187,11 @@ fn reduce_spout_type_transform() {
         CollectSpout::<String>::new(),
     );
 
-    s.send(1);
-    s.send(2);
-    s.send(3);
-    s.send(4);
-    s.flush();
+    let _ = s.send(1);
+    let _ = s.send(2);
+    let _ = s.send(3);
+    let _ = s.send(4);
+    let _ = s.flush();
 
     assert_eq!(
         s.into_inner().into_items(),
@@ -212,21 +212,21 @@ fn reduce_spout_accessors() {
 #[test]
 fn send_all_default_delegates_to_send() {
     let mut s = CollectSpout::new();
-    s.send_all([1, 2, 3, 4, 5].into_iter());
+    let _ = s.send_all([1, 2, 3, 4, 5].into_iter());
     assert_eq!(s.items(), vec![1, 2, 3, 4, 5]);
 }
 
 #[test]
 fn send_all_empty_iterator() {
     let mut s = CollectSpout::<i32>::new();
-    s.send_all(core::iter::empty());
+    let _ = s.send_all(core::iter::empty());
     assert!(s.items().is_empty());
 }
 
 #[test]
 fn send_all_with_batch_spout_triggers_threshold() {
     let mut s: BatchSpout<i32, CollectSpout<Vec<i32>>> = BatchSpout::new(3, CollectSpout::new());
-    s.send_all([1, 2, 3, 4, 5].into_iter());
+    let _ = s.send_all([1, 2, 3, 4, 5].into_iter());
 
     // First 3 should have triggered a batch
     assert_eq!(s.inner().items(), vec![vec![1, 2, 3]]);
@@ -238,17 +238,17 @@ fn send_all_with_batch_spout_triggers_threshold() {
 #[test]
 fn batch_spout_single_item_flush() {
     let mut s: BatchSpout<i32, CollectSpout<Vec<i32>>> = BatchSpout::new(100, CollectSpout::new());
-    s.send(42);
-    s.flush();
+    let _ = s.send(42);
+    let _ = s.flush();
     assert_eq!(s.into_inner().into_items(), vec![vec![42]]);
 }
 
 #[test]
 fn batch_spout_threshold_of_one() {
     let mut s: BatchSpout<i32, CollectSpout<Vec<i32>>> = BatchSpout::new(1, CollectSpout::new());
-    s.send(1);
-    s.send(2);
-    s.send(3);
+    let _ = s.send(1);
+    let _ = s.send(2);
+    let _ = s.send(3);
     assert_eq!(s.inner().items(), vec![vec![1], vec![2], vec![3]]);
 }
 
@@ -256,9 +256,9 @@ fn batch_spout_threshold_of_one() {
 fn batch_spout_large_batch() {
     let mut s: BatchSpout<i32, CollectSpout<Vec<i32>>> = BatchSpout::new(1000, CollectSpout::new());
     for i in 0..2500 {
-        s.send(i);
+        let _ = s.send(i);
     }
-    s.flush();
+    let _ = s.flush();
 
     let batches = s.into_inner().into_items();
     assert_eq!(batches.len(), 3); // 1000 + 1000 + 500
@@ -270,16 +270,16 @@ fn batch_spout_large_batch() {
 #[test]
 fn reduce_spout_empty_flush_is_noop() {
     let mut s = ReduceSpout::new(10, |b: Vec<i32>| b.len(), CollectSpout::new());
-    s.flush();
+    let _ = s.flush();
     assert!(s.into_inner().into_items().is_empty());
 }
 
 #[test]
 fn reduce_spout_threshold_of_one() {
     let mut s = ReduceSpout::new(1, |batch: Vec<i32>| batch[0] * 10, CollectSpout::new());
-    s.send(1);
-    s.send(2);
-    s.send(3);
+    let _ = s.send(1);
+    let _ = s.send(2);
+    let _ = s.send(3);
     assert_eq!(s.into_inner().into_items(), vec![10, 20, 30]);
 }
 
@@ -299,13 +299,13 @@ fn reduce_spout_rejects_zero_threshold() {
 #[test]
 fn batch_spout_send_after_flush() {
     let mut s: BatchSpout<i32, CollectSpout<Vec<i32>>> = BatchSpout::new(3, CollectSpout::new());
-    s.send(1);
-    s.send(2);
-    s.flush();
+    let _ = s.send(1);
+    let _ = s.send(2);
+    let _ = s.flush();
     // Buffer should be usable after flush
-    s.send(3);
-    s.send(4);
-    s.send(5);
+    let _ = s.send(3);
+    let _ = s.send(4);
+    let _ = s.send(5);
     // One batch from flush (partial), one from threshold
     assert_eq!(s.inner().items(), vec![vec![1, 2], vec![3, 4, 5]]);
 }
@@ -313,13 +313,13 @@ fn batch_spout_send_after_flush() {
 #[test]
 fn collect_spout_take_leaves_empty() {
     let mut s = CollectSpout::new();
-    s.send(1);
-    s.send(2);
+    let _ = s.send(1);
+    let _ = s.send(2);
     let taken = s.take();
     assert_eq!(taken, vec![1, 2]);
     assert!(s.items().is_empty());
 
     // Can continue sending after take
-    s.send(3);
+    let _ = s.send(3);
     assert_eq!(s.items(), vec![3]);
 }

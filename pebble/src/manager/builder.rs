@@ -253,7 +253,8 @@ impl<S, const N: usize> StorageBuilder<S, N> {
     where
         T: Checkpointable + bytecast::ToBytes + bytecast::FromBytes,
         T::Id: Copy,
-        S: spout::Spout<(T::Id, alloc::vec::Vec<u8>)> + crate::storage::CheckpointLoader<T::Id>,
+        S: spout::Spout<(T::Id, alloc::vec::Vec<u8>), Error = core::convert::Infallible>
+            + crate::storage::CheckpointLoader<T::Id>,
     {
         if self.hot_capacity == 0 {
             return Err(super::error::BuilderError::ZeroHotCapacity);
@@ -293,7 +294,8 @@ impl<S, const N: usize> StorageBuilder<S, N> {
     >
     where
         T: Checkpointable + bytecast::ToBytes + bytecast::FromBytes,
-        S: spout::Spout<(T::Id, alloc::vec::Vec<u8>)> + crate::storage::CheckpointLoader<T::Id>,
+        S: spout::Spout<(T::Id, alloc::vec::Vec<u8>), Error = core::convert::Infallible>
+            + crate::storage::CheckpointLoader<T::Id>,
     {
         if self.hot_capacity == 0 {
             return Err(super::error::BuilderError::ZeroHotCapacity);

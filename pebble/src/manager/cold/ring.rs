@@ -30,7 +30,12 @@ use super::{ColdTier, RecoverableColdTier};
 ///   [`CheckpointLoader`] (for reads)
 /// - `Ser` — Checkpoint serializer
 /// - `N` — Ring buffer capacity (const generic)
-pub struct RingCold<CId, S: Spout<(CId, Vec<u8>)>, Ser, const N: usize> {
+pub struct RingCold<
+    CId,
+    S: Spout<(CId, Vec<u8>), Error = core::convert::Infallible>,
+    Ser,
+    const N: usize,
+> {
     ring: SpillRing<(CId, Vec<u8>), N, S>,
     serializer: Ser,
 }
@@ -38,7 +43,7 @@ pub struct RingCold<CId, S: Spout<(CId, Vec<u8>)>, Ser, const N: usize> {
 impl<CId, S, Ser, const N: usize> RingCold<CId, S, Ser, N>
 where
     CId: Copy,
-    S: Spout<(CId, Vec<u8>)>,
+    S: Spout<(CId, Vec<u8>), Error = core::convert::Infallible>,
 {
     /// Create a new ring-buffered cold tier with a custom serializer.
     pub fn new(storage: S, serializer: Ser) -> Self {
@@ -63,7 +68,7 @@ where
 impl<CId, S, const N: usize> RingCold<CId, S, super::super::BytecastSerializer, N>
 where
     CId: Copy,
-    S: Spout<(CId, Vec<u8>)>,
+    S: Spout<(CId, Vec<u8>), Error = core::convert::Infallible>,
 {
     /// Create a new ring-buffered cold tier using `BytecastSerializer`.
     pub fn with_storage(storage: S) -> Self {
@@ -74,7 +79,7 @@ where
 impl<T, S, Ser, const N: usize> ColdTier<T> for RingCold<T::Id, S, Ser, N>
 where
     T: Checkpointable,
-    S: Spout<(T::Id, Vec<u8>)> + CheckpointLoader<T::Id>,
+    S: Spout<(T::Id, Vec<u8>), Error = core::convert::Infallible> + CheckpointLoader<T::Id>,
     Ser: CheckpointSerializer<T>,
 {
     type Error = DirectStorageError<Ser::Error>;
@@ -101,7 +106,7 @@ where
 
     fn flush(&mut self) -> Result<(), Self::Error> {
         self.ring.flush();
-        self.ring.sink_mut().flush();
+        let _ = self.ring.sink_mut().flush();
         Ok(())
     }
 
@@ -115,7 +120,8 @@ impl<T, S, Ser, SId, const N: usize, const MAX_DEPS: usize> RecoverableColdTier<
 where
     T: Checkpointable,
     T::Id: Hash,
-    S: Spout<(T::Id, Vec<u8>)> + RecoverableStorage<T::Id, SId, MAX_DEPS>,
+    S: Spout<(T::Id, Vec<u8>), Error = core::convert::Infallible>
+        + RecoverableStorage<T::Id, SId, MAX_DEPS>,
     Ser: CheckpointSerializer<T>,
     SId: SessionId,
 {

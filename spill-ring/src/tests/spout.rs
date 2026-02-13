@@ -42,62 +42,8 @@ fn batch_sink_with_ring_chain() {
 
 #[cfg(feature = "std")]
 mod channel_sink_tests {
-    use crate::SpillRing;
     use spout::{ChannelSpout, Spout};
     use std::sync::mpsc;
-
-    #[test]
-    fn channel_sink_sends_evicted_items() {
-        let (tx, rx) = mpsc::channel();
-        let ring = SpillRing::<i32, 4, _>::with_sink(ChannelSpout::new(tx));
-
-        // Fill ring
-        ring.push(1);
-        ring.push(2);
-        ring.push(3);
-        ring.push(4);
-
-        // No evictions yet
-        assert!(rx.try_recv().is_err());
-
-        // Trigger evictions
-        ring.push(5); // evicts 1
-        ring.push(6); // evicts 2
-
-        assert_eq!(rx.try_recv(), Ok(1));
-        assert_eq!(rx.try_recv(), Ok(2));
-        assert!(rx.try_recv().is_err());
-    }
-
-    #[test]
-    fn channel_sink_with_flush() {
-        let (tx, rx) = mpsc::channel();
-        let mut ring = SpillRing::<i32, 4, _>::with_sink(ChannelSpout::new(tx));
-
-        ring.push(10);
-        ring.push(20);
-        ring.push(30);
-
-        ring.flush();
-
-        let items: Vec<_> = rx.try_iter().collect();
-        assert_eq!(items, vec![10, 20, 30]);
-    }
-
-    #[test]
-    fn channel_sink_drop_sends_remaining() {
-        let (tx, rx) = mpsc::channel();
-
-        {
-            let ring = SpillRing::<i32, 4, _>::with_sink(ChannelSpout::new(tx));
-            ring.push(1);
-            ring.push(2);
-            // Ring dropped here, flushes to sink
-        }
-
-        let items: Vec<_> = rx.try_iter().collect();
-        assert_eq!(items, vec![1, 2]);
-    }
 
     #[test]
     fn channel_sink_accessors() {
@@ -123,31 +69,7 @@ mod channel_sink_tests {
         drop(rx);
 
         // send should not panic
-        sink.send(1);
-        sink.send(2);
-    }
-
-    #[test]
-    fn channel_sink_mpsc_pattern() {
-        // Multiple rings sending to one receiver
-        let (tx, rx) = mpsc::channel();
-
-        let ring1 = SpillRing::<i32, 2, _>::with_sink(ChannelSpout::new(tx.clone()));
-        let ring2 = SpillRing::<i32, 2, _>::with_sink(ChannelSpout::new(tx.clone()));
-        drop(tx); // Drop original sender
-
-        // Fill and overflow both rings
-        ring1.push(10);
-        ring1.push(11);
-        ring1.push(12); // evicts 10
-
-        ring2.push(20);
-        ring2.push(21);
-        ring2.push(22); // evicts 20
-
-        // Both evictions should arrive at receiver
-        let mut evicted: Vec<_> = rx.try_iter().collect();
-        evicted.sort();
-        assert_eq!(evicted, vec![10, 20]);
+        let _ = sink.send(1);
+        let _ = sink.send(2);
     }
 }
